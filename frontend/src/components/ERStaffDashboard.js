@@ -17,6 +17,7 @@ function ERStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socket 
   const [activeTab, setActiveTab] = useState('all'); // 'all', 'pending', 'approved', 'closed'
   const [selectedWard, setSelectedWard] = useState('All'); // Ward filter
   const [searchQuery, setSearchQuery] = useState(''); // Search by bed number or patient name
+  const [settings, setSettings] = useState(null);
   const [newRequest, setNewRequest] = useState({
     patientDetails: {
       name: '',
@@ -37,6 +38,7 @@ function ERStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socket 
     fetchRequests();
     fetchStats();
     fetchAvailabilitySummary();
+    fetchSettings();
 
     const interval = setInterval(() => {
       fetchRequests();
@@ -157,6 +159,15 @@ function ERStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socket 
     }
   };
 
+  const fetchSettings = async () => {
+    try {
+      const response = await axios.get(`${API_URL}/settings`);
+      setSettings(response.data);
+    } catch (error) {
+      console.error('Error fetching settings:', error);
+    }
+  };
+
   // // Calculate filtered stats based on selected ward
   // const getFilteredStats = () => {
   //   if (!stats || selectedWard === 'All') {
@@ -224,9 +235,10 @@ function ERStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socket 
 
       // If user wants to reserve a bed immediately, approve the request
       if (reserveBed && selectedBedId) {
+        const ttlMinutes = settings?.reservationPolicies?.defaultReservationTTL || 120;
         await axios.post(`${API_URL}/bed-requests/${createdRequest._id}/approve`, {
           bedId: selectedBedId,
-          reservationTTL: new Date(Date.now() + 2 * 60 * 60 * 1000) // 2 hours
+          reservationTTL: new Date(Date.now() + ttlMinutes * 60 * 1000)
         });
       }
 

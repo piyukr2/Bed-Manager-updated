@@ -44,9 +44,9 @@ const systemSettingsSchema = new mongoose.Schema({
   reservationPolicies: {
     defaultReservationTTL: {
       type: Number,
-      default: 2, // hours
-      min: 1,
-      max: 24
+      default: 120, // minutes (2 hours)
+      min: 5,
+      max: 1440 // 24 hours in minutes
     },
     autoExpireReservations: {
       type: Boolean,
@@ -64,6 +64,34 @@ const systemSettingsSchema = new mongoose.Schema({
       type: String,
       enum: ['json', 'csv', 'pdf'],
       default: 'json'
+    }
+  },
+
+  // Ward Bed Capacity
+  wardCapacity: {
+    Emergency: {
+      type: Number,
+      default: 15,
+      min: 1,
+      max: 200
+    },
+    ICU: {
+      type: Number,
+      default: 15,
+      min: 1,
+      max: 200
+    },
+    'General Ward': {
+      type: Number,
+      default: 15,
+      min: 1,
+      max: 200
+    },
+    Cardiology: {
+      type: Number,
+      default: 15,
+      min: 1,
+      max: 200
     }
   },
 
