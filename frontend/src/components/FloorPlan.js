@@ -12,8 +12,7 @@ const STATUS_LABELS = {
   available: 'Available',
   occupied: 'Occupied',
   cleaning: 'Cleaning',
-  reserved: 'Reserved',
-  maintenance: 'Maintenance'
+  reserved: 'Reserved'
 };
 
 // Map floors to wards
