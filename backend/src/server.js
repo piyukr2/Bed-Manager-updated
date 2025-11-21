@@ -49,8 +49,8 @@ app.use(cors({
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"]
 }));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // MongoDB Atlas Configuration
 const DB_PASSWORD = process.env.DB_PASSWORD || '<db_password>';
@@ -424,6 +424,28 @@ const cleaningJobRoutes = require('./routes/cleaningJobs');
 const cleaningStaffRoutes = require('./routes/cleaningStaff');
 app.use('/api/cleaning-jobs', authenticateToken, cleaningJobRoutes);
 app.use('/api/cleaning-staff', authenticateToken, cleaningStaffRoutes);
+
+// Seed data import routes (Admin only)
+const { router: seedRoutes, initializeModels: initSeedModels } = require('./routes/seedRoutes');
+const Bed = require('./models/Bed');
+const Patient = require('./models/Patient');
+const OccupancyHistory = require('./models/OccupancyHistory');
+const Alert = require('./models/Alert');
+const CleaningJob = require('./models/CleaningJob');
+const CleaningStaff = require('./models/CleaningStaff');
+
+// Initialize seed routes with models
+initSeedModels({ Bed, Patient, OccupancyHistory, Alert, CleaningJob, CleaningStaff });
+
+// Admin-only middleware for seed routes
+const adminOnly = (req, res, next) => {
+  if (req.user && req.user.role === 'admin') {
+    next();
+  } else {
+    res.status(403).json({ error: 'Admin access required' });
+  }
+};
+app.use('/api/seed', authenticateToken, adminOnly, seedRoutes);
 
 // Database status endpoint
 app.get('/api/db-status', async (req, res) => {
