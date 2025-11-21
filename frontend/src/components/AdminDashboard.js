@@ -18,6 +18,13 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [selectedWard, setSelectedWard] = useState('All');
 
+  // Seed data import state
+  const [seedFile, setSeedFile] = useState(null);
+  const [seedValidation, setSeedValidation] = useState(null);
+  const [seedImporting, setSeedImporting] = useState(false);
+  const [seedImportResult, setSeedImportResult] = useState(null);
+  const [dbStatus, setDbStatus] = useState(null);
+
   useEffect(() => {
     fetchAllData();
 
@@ -198,6 +205,96 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
     } finally {
       setSettingsSaving(false);
     }
+  };
+
+  // Seed data import handlers
+  const fetchDbStatus = async () => {
+    try {
+      const response = await axios.get(`${API_URL}/seed/status`);
+      setDbStatus(response.data.currentCounts);
+    } catch (error) {
+      console.error('Error fetching DB status:', error);
+    }
+  };
+
+  const handleSeedFileSelect = async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    setSeedFile(file);
+    setSeedValidation(null);
+    setSeedImportResult(null);
+
+    try {
+      const text = await file.text();
+      const seedData = JSON.parse(text);
+
+      // Validate the seed data
+      const response = await axios.post(`${API_URL}/seed/validate`, seedData);
+      setSeedValidation(response.data);
+
+      // Also fetch current DB status
+      await fetchDbStatus();
+    } catch (error) {
+      if (error instanceof SyntaxError) {
+        setSeedValidation({
+          isValid: false,
+          errors: ['Invalid JSON format in file'],
+          warnings: [],
+          summary: {}
+        });
+      } else {
+        setSeedValidation({
+          isValid: false,
+          errors: [error.response?.data?.error || error.message],
+          warnings: [],
+          summary: {}
+        });
+      }
+    }
+  };
+
+  const handleSeedImport = async () => {
+    if (!seedFile || !seedValidation?.isValid) return;
+
+    const confirmMsg = `This will import data into the database (merge mode - duplicates will be skipped).\n\nSummary:\n- Beds: ${seedValidation.summary.beds || 0}\n- Patients: ${seedValidation.summary.patients || 0}\n- Occupancy History: ${seedValidation.summary.occupancyHistory || 0} days\n\nContinue?`;
+
+    if (!window.confirm(confirmMsg)) return;
+
+    setSeedImporting(true);
+    setSeedImportResult(null);
+
+    try {
+      const text = await seedFile.text();
+      const seedData = JSON.parse(text);
+
+      const response = await axios.post(`${API_URL}/seed/import`, seedData);
+      setSeedImportResult(response.data);
+
+      // Refresh all data after import
+      await fetchAllData();
+      await fetchDbStatus();
+
+      alert('Seed data imported successfully!');
+    } catch (error) {
+      console.error('Seed import error:', error);
+      setSeedImportResult({
+        success: false,
+        error: error.response?.data?.error || 'Import failed',
+        details: error.response?.data?.details || error.message
+      });
+    } finally {
+      setSeedImporting(false);
+    }
+  };
+
+  const clearSeedSelection = () => {
+    setSeedFile(null);
+    setSeedValidation(null);
+    setSeedImportResult(null);
+    // Reset file input
+    const fileInput = document.getElementById('seed-file-input');
+    if (fileInput) fileInput.value = '';
   };
 
   const calculateTrends = () => {
@@ -1133,6 +1230,152 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
                       <option value="pdf">PDF</option>
                     </select>
                   </div>
+                </div>
+              </div>
+
+              {/* Seed Data Import Section */}
+              <div className="seed-import-section">
+                <h3>Import Historical Data</h3>
+                <p className="settings-description">
+                  Load historical patient and occupancy data from a JSON seed file. New records will be added while duplicates are skipped.
+                </p>
+
+                <div className="seed-import-container">
+                  <div className="seed-file-upload">
+                    <label htmlFor="seed-file-input" className="file-upload-label">
+                      Select Seed Data File (JSON)
+                    </label>
+                    <input
+                      type="file"
+                      id="seed-file-input"
+                      accept=".json"
+                      onChange={handleSeedFileSelect}
+                      className="file-input"
+                    />
+                    {seedFile && (
+                      <div className="selected-file">
+                        <span className="file-name">{seedFile.name}</span>
+                        <span className="file-size">({(seedFile.size / 1024).toFixed(1)} KB)</span>
+                        <button className="btn-clear-file" onClick={clearSeedSelection}>Clear</button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Validation Results */}
+                  {seedValidation && (
+                    <div className={`seed-validation ${seedValidation.isValid ? 'valid' : 'invalid'}`}>
+                      <h4>{seedValidation.isValid ? 'File Valid' : 'Validation Failed'}</h4>
+
+                      {seedValidation.errors?.length > 0 && (
+                        <div className="validation-errors">
+                          <strong>Errors:</strong>
+                          <ul>
+                            {seedValidation.errors.map((err, idx) => (
+                              <li key={idx}>{err}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+
+                      {seedValidation.warnings?.length > 0 && (
+                        <div className="validation-warnings">
+                          <strong>Warnings:</strong>
+                          <ul>
+                            {seedValidation.warnings.map((warn, idx) => (
+                              <li key={idx}>{warn}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+
+                      {seedValidation.isValid && seedValidation.summary && (
+                        <div className="seed-summary">
+                          <h5>Data Summary</h5>
+                          <div className="summary-grid">
+                            <div className="summary-item">
+                              <span className="summary-label">Beds</span>
+                              <span className="summary-value">{seedValidation.summary.beds || 0}</span>
+                            </div>
+                            <div className="summary-item">
+                              <span className="summary-label">Total Patients</span>
+                              <span className="summary-value">{seedValidation.summary.patients || 0}</span>
+                            </div>
+                            <div className="summary-item">
+                              <span className="summary-label">Current Patients</span>
+                              <span className="summary-value">{seedValidation.summary.currentPatients || 0}</span>
+                            </div>
+                            <div className="summary-item">
+                              <span className="summary-label">Discharged</span>
+                              <span className="summary-value">{seedValidation.summary.dischargedPatients || 0}</span>
+                            </div>
+                            <div className="summary-item">
+                              <span className="summary-label">History Days</span>
+                              <span className="summary-value">{seedValidation.summary.occupancyHistory || 0}</span>
+                            </div>
+                            <div className="summary-item">
+                              <span className="summary-label">Alerts</span>
+                              <span className="summary-value">{seedValidation.summary.alerts || 0}</span>
+                            </div>
+                          </div>
+
+                          {dbStatus && (
+                            <div className="current-db-status">
+                              <h5>Current Database</h5>
+                              <div className="summary-grid">
+                                <div className="summary-item">
+                                  <span className="summary-label">Beds</span>
+                                  <span className="summary-value">{dbStatus.beds}</span>
+                                </div>
+                                <div className="summary-item">
+                                  <span className="summary-label">Patients</span>
+                                  <span className="summary-value">{dbStatus.patients}</span>
+                                </div>
+                                <div className="summary-item">
+                                  <span className="summary-label">History Records</span>
+                                  <span className="summary-value">{dbStatus.occupancyHistory}</span>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Import Result */}
+                  {seedImportResult && (
+                    <div className={`seed-import-result ${seedImportResult.success ? 'success' : 'error'}`}>
+                      <h4>{seedImportResult.success ? 'Import Successful' : 'Import Failed'}</h4>
+                      {seedImportResult.success ? (
+                        <>
+                          <p>{seedImportResult.message}</p>
+                          <div className="import-details">
+                            {Object.entries(seedImportResult.results || {}).map(([key, value]) => (
+                              <div key={key} className="import-detail-row">
+                                <span className="detail-label">{key}:</span>
+                                <span className="detail-imported">{value.imported} imported</span>
+                                <span className="detail-skipped">{value.skipped} skipped</span>
+                                {value.errors > 0 && <span className="detail-errors">{value.errors} errors</span>}
+                              </div>
+                            ))}
+                          </div>
+                        </>
+                      ) : (
+                        <p className="error-message">{seedImportResult.error}: {seedImportResult.details}</p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Import Button */}
+                  {seedValidation?.isValid && (
+                    <button
+                      className="btn-import-seed"
+                      onClick={handleSeedImport}
+                      disabled={seedImporting}
+                    >
+                      {seedImporting ? 'Importing...' : 'Import Seed Data'}
+                    </button>
+                  )}
                 </div>
               </div>
 
