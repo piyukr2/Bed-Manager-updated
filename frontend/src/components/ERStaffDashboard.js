@@ -23,7 +23,7 @@ function ERStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socket 
       age: '',
       gender: 'Male',
       contactNumber: '',
-      triageLevel: 'Semi-Urgent',
+      triageLevel: 'Urgent',
       reasonForAdmission: '',
       requiredEquipment: 'Standard',
       estimatedStay: 24
@@ -237,7 +237,7 @@ function ERStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socket 
           age: '',
           gender: 'Male',
           contactNumber: '',
-          triageLevel: 'Semi-Urgent',
+          triageLevel: 'Urgent',
           reasonForAdmission: '',
           requiredEquipment: 'Standard',
           estimatedStay: 24
@@ -330,10 +330,8 @@ function ERStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socket 
 
   const getTriageLevelClass = (level) => {
     const classes = {
-      Critical: 'triage-critical',
       Urgent: 'triage-urgent',
-      'Semi-Urgent': 'triage-semi-urgent',
-      'Non-Urgent': 'triage-non-urgent'
+      'Not Urgent': 'triage-non-urgent'
     };
     return classes[level] || '';
   };
@@ -720,9 +718,8 @@ function ERStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socket 
                       })}
                       className={`triage-select ${getTriageLevelClass(newRequest.patientDetails.triageLevel)}`}
                     >
-                      <option value="Critical">Critical</option>
-                      <option value="Semi-Urgent">Semi-Urgent</option>
-                      <option value="Non-Urgent">Non-Urgent</option>
+                      <option value="Urgent">Urgent</option>
+                      <option value="Not Urgent">Not Urgent</option>
                     </select>
                   </div>
 
