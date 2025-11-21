@@ -5,7 +5,7 @@ const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
 function ERStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socket }) {
   const [requests, setRequests] = useState([]);
-  const [stats, setStats] = useState(null);
+  // const [stats, setStats] = useState(null);
   const [availabilitySummary, setAvailabilitySummary] = useState(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -142,7 +142,7 @@ function ERStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socket 
   const fetchStats = async () => {
     try {
       const response = await axios.get(`${API_URL}/bed-requests/stats`);
-      setStats(response.data);
+      // setStats(response.data);
     } catch (error) {
       console.error('Error fetching stats:', error);
     }
@@ -157,21 +157,21 @@ function ERStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socket 
     }
   };
 
-  // Calculate filtered stats based on selected ward
-  const getFilteredStats = () => {
-    if (!stats || selectedWard === 'All') {
-      return stats;
-    }
+  // // Calculate filtered stats based on selected ward
+  // const getFilteredStats = () => {
+  //   if (!stats || selectedWard === 'All') {
+  //     return stats;
+  //   }
 
-    return {
-      total: stats.byWard?.[selectedWard]?.total || 0,
-      pending: stats.byWard?.[selectedWard]?.pending || 0,
-      approved: stats.byWard?.[selectedWard]?.approved || 0,
-      denied: stats.byWard?.[selectedWard]?.denied || 0,
-      fulfilled: stats.byWard?.[selectedWard]?.fulfilled || 0,
-      cancelled: stats.byWard?.[selectedWard]?.cancelled || 0
-    };
-  };
+  //   return {
+  //     total: stats.byWard?.[selectedWard]?.total || 0,
+  //     pending: stats.byWard?.[selectedWard]?.pending || 0,
+  //     approved: stats.byWard?.[selectedWard]?.approved || 0,
+  //     denied: stats.byWard?.[selectedWard]?.denied || 0,
+  //     fulfilled: stats.byWard?.[selectedWard]?.fulfilled || 0,
+  //     cancelled: stats.byWard?.[selectedWard]?.cancelled || 0
+  //   };
+  // };
 
   // Calculate filtered availability based on selected ward
   const getFilteredAvailability = () => {
@@ -197,7 +197,7 @@ function ERStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socket 
     return null;
   };
 
-  const filteredStats = getFilteredStats();
+  // const filteredStats = getFilteredStats();
   const filteredAvailability = getFilteredAvailability();
 
   const fetchAvailableBeds = async (ward) => {

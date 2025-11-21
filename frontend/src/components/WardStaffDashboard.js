@@ -5,7 +5,7 @@ const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
 function WardStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socket }) {
   const [beds, setBeds] = useState([]);
-  const [patients, setPatients] = useState([]);
+  // const [patients, setPatients] = useState([]);
   const [reservedBeds, setReservedBeds] = useState([]);
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -20,11 +20,36 @@ function WardStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socke
     description: ''
   });
 
+  const fetchData = async () => {
+    try {
+      // Build query params based on selected ward
+      const wardParam = selectedWard === 'All' ? '' : `?ward=${selectedWard}`;
+      
+      const [bedsRes, statsRes] = await Promise.all([
+        axios.get(`${API_URL}/beds${wardParam}`),
+        axios.get(`${API_URL}/beds/stats`)
+      ]);
+
+      setBeds(bedsRes.data);
+      setStats(statsRes.data);
+
+      // Filter reserved beds that haven't been acknowledged yet
+      const reserved = bedsRes.data.filter(bed =>
+        bed.status === 'reserved' &&
+        !bed.notes?.includes('Bed prepared and ready for patient admission')
+      );
+      setReservedBeds(reserved);
+    } catch (error) {
+      console.error('Error fetching data:', error);
+    }
+  };
+
   useEffect(() => {
     fetchData();
 
     const interval = setInterval(fetchData, 30000);
     return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedWard]); // Re-fetch when selected ward changes
 
   useEffect(() => {
@@ -63,33 +88,8 @@ function WardStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socke
       socket.off('bed-request-expired');
       socket.off('bed-request-fulfilled');
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [socket, selectedWard]);
-
-  const fetchData = async () => {
-    try {
-      // Build query params based on selected ward
-      const wardParam = selectedWard === 'All' ? '' : `?ward=${selectedWard}`;
-      
-      const [bedsRes, patientsRes, statsRes] = await Promise.all([
-        axios.get(`${API_URL}/beds${wardParam}`),
-        axios.get(`${API_URL}/patients`),
-        axios.get(`${API_URL}/beds/stats`)
-      ]);
-
-      setBeds(bedsRes.data);
-      setPatients(patientsRes.data);
-      setStats(statsRes.data);
-
-      // Filter reserved beds that haven't been acknowledged yet
-      const reserved = bedsRes.data.filter(bed =>
-        bed.status === 'reserved' &&
-        !bed.notes?.includes('Bed prepared and ready for patient admission')
-      );
-      setReservedBeds(reserved);
-    } catch (error) {
-      console.error('Error fetching data:', error);
-    }
-  };
 
   const handleBedStatusChange = async (bedId, newStatus, bed) => {
     setLoading(true);
@@ -113,17 +113,17 @@ function WardStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socke
     }
   };
 
-  const handleDischargePatient = async (patientId) => {
-    if (!window.confirm('Are you sure you want to discharge this patient?')) return;
+  // const handleDischargePatient = async (patientId) => {
+  //   if (!window.confirm('Are you sure you want to discharge this patient?')) return;
 
-    try {
-      await axios.delete(`${API_URL}/patients/${patientId}`);
-      fetchData();
-    } catch (error) {
-      console.error('Error discharging patient:', error);
-      alert(error.response?.data?.error || 'Failed to discharge patient');
-    }
-  };
+  //   try {
+  //     await axios.delete(`${API_URL}/patients/${patientId}`);
+  //     fetchData();
+  //   } catch (error) {
+  //     console.error('Error discharging patient:', error);
+  //     alert(error.response?.data?.error || 'Failed to discharge patient');
+  //   }
+  // };
 
   const handleReportIssue = async (bed) => {
     setIssueDetails({
@@ -278,28 +278,28 @@ function WardStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socke
     return false;
   };
 
-  // Group beds by floor
-  const bedsByFloor = beds.reduce((acc, bed) => {
-    const floor = bed.location.floor;
-    if (!acc[floor]) acc[floor] = [];
-    acc[floor].push(bed);
-    return acc;
-  }, {});
+  // // Group beds by floor
+  // const bedsByFloor = beds.reduce((acc, bed) => {
+  //   const floor = bed.location.floor;
+  //   if (!acc[floor]) acc[floor] = [];
+  //   acc[floor].push(bed);
+  //   return acc;
+  // }, {});
 
-  // Group beds by ward
-  const bedsByWard = beds.reduce((acc, bed) => {
-    const ward = bed.ward;
-    if (!acc[ward]) acc[ward] = [];
-    acc[ward].push(bed);
-    return acc;
-  }, {});
+  // // Group beds by ward
+  // const bedsByWard = beds.reduce((acc, bed) => {
+  //   const ward = bed.ward;
+  //   if (!acc[ward]) acc[ward] = [];
+  //   acc[ward].push(bed);
+  //   return acc;
+  // }, {});
 
-  // Get cleaning-related beds
-  const getCleaningBeds = (bedList) => {
-    return bedList.filter(bed =>
-      bed.status === 'cleaning' || bed.status === 'occupied'
-    );
-  };
+  // // Get cleaning-related beds
+  // const getCleaningBeds = (bedList) => {
+  //   return bedList.filter(bed =>
+  //     bed.status === 'cleaning' || bed.status === 'occupied'
+  //   );
+  // };
 
   return (
     <div className="ward-staff-dashboard">

@@ -1,17 +1,17 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import io from 'socket.io-client';
-import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+// import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import Home from './components/Home';
-import Dashboard from './components/Dashboard';
-import BedGrid from './components/BedGrid';
-import WardView from './components/WardView';
-import OccupancyChart from './components/OccupancyChart';
-import AlertPanel from './components/AlertPanel';
-import EmergencyAdmission from './components/EmergencyAdmission';
+// import Dashboard from './components/Dashboard';
+// import BedGrid from './components/BedGrid';
+// import WardView from './components/WardView';
+// import OccupancyChart from './components/OccupancyChart';
+// import AlertPanel from './components/AlertPanel';
+// import EmergencyAdmission from './components/EmergencyAdmission';
 import Login from './components/Login';
 import CriticalAlertModal from './components/CriticalAlertModal';
-import FloorPlan from './components/FloorPlan';
+// import FloorPlan from './components/FloorPlan';
 import ERStaffDashboard from './components/ERStaffDashboard';
 import ICUManagerDashboard from './components/ICUManagerDashboard';
 import WardStaffDashboard from './components/WardStaffDashboard';
@@ -33,7 +33,7 @@ function App() {
   const [patients, setPatients] = useState([]);
   const [alerts, setAlerts] = useState([]);
   const [selectedWard, setSelectedWard] = useState('All');
-  const [showEmergencyModal, setShowEmergencyModal] = useState(false);
+  // const [showEmergencyModal, setShowEmergencyModal] = useState(false);
   const [loading, setLoading] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState('disconnected');
   const [criticalAlerts, setCriticalAlerts] = useState([]);
@@ -45,12 +45,12 @@ function App() {
       ? 'dark'
       : 'light';
   });
-  const connectionLabel = connectionStatus === 'connected'
-    ? 'Connected'
-    : connectionStatus === 'error'
-    ? 'Connection issue'
-    : 'Offline';
-  const [bedViewMode, setBedViewMode] = useState('ward'); // 'ward', 'floor', or 'grid'
+  // const connectionLabel = connectionStatus === 'connected'
+  //   ? 'Connected'
+  //   : connectionStatus === 'error'
+  //   ? 'Connection issue'
+  //   : 'Offline';
+  // const [bedViewMode, setBedViewMode] = useState('ward'); // 'ward', 'floor', or 'grid'
 
   // Axios interceptor to add auth token
   useEffect(() => {
@@ -183,6 +183,7 @@ function App() {
         socket.disconnect();
       }
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser, token]);
 
   // Fetch all data when user is logged in
@@ -194,6 +195,7 @@ function App() {
       const interval = setInterval(fetchData, 5 * 60 * 1000);
       return () => clearInterval(interval);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser]);
 
   const handleGetStarted = () => {
@@ -253,9 +255,9 @@ function App() {
     setTheme(prev => (prev === 'light' ? 'dark' : 'light'));
   };
 
-  const handleViewModeChange = (mode) => {
-    setBedViewMode(mode);
-  };
+  // const handleViewModeChange = (mode) => {
+  //   setBedViewMode(mode);
+  // };
 
   const initializeSampleData = async () => {
     try {
@@ -321,7 +323,7 @@ function App() {
 
   const fetchAlerts = async () => {
     try {
-      const response = await axios.get(`${API_URL}/alerts?limit=10&acknowledged=false`);
+      const response = await axios.get(`${API_URL}/alerts?acknowledged=false&limit=100`);
       const formattedAlerts = response.data.map(alert => ({
         type: alert.type,
         message: alert.message,
@@ -340,7 +342,7 @@ function App() {
     const alertPayload = { ...alert, id: alertId };
 
     setAlerts(prevAlerts => {
-      const newAlerts = [alertPayload, ...prevAlerts].slice(0, 10);
+      const newAlerts = [alertPayload, ...prevAlerts];
       return newAlerts;
     });
 
@@ -370,7 +372,7 @@ function App() {
   const handleEmergencyAdmission = async (patientData) => {
     try {
       const response = await axios.post(`${API_URL}/patients`, patientData);
-      setShowEmergencyModal(false);
+      // setShowEmergencyModal(false);
       addAlert({
         type: 'success',
         message: `Emergency patient ${response.data.patient.name} admitted to bed ${response.data.bed.bedNumber}. ${response.data.matchLevel}`,
@@ -448,15 +450,15 @@ function App() {
 
   // Role-based dashboard routing
   const renderDashboard = () => {
-    const filteredBeds = selectedWard === 'All'
-      ? beds
-      : beds.filter(bed => bed.ward === selectedWard);
+    // const filteredBeds = selectedWard === 'All'
+    //   ? beds
+    //   : beds.filter(bed => bed.ward === selectedWard);
 
-    const wards = currentUser.role === 'admin'
-      ? ['All', ...new Set(beds.map(bed => bed.ward))]
-      : currentUser.ward
-      ? [currentUser.ward]
-      : ['All', ...new Set(beds.map(bed => bed.ward))];
+    // const wards = currentUser.role === 'admin'
+    //   ? ['All', ...new Set(beds.map(bed => bed.ward))]
+    //   : currentUser.ward
+    //   ? [currentUser.ward]
+    //   : ['All', ...new Set(beds.map(bed => bed.ward))];
 
     switch (currentUser.role) {
       case 'er_staff':
