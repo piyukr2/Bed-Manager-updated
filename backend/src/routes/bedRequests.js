@@ -4,6 +4,7 @@ const BedRequest = require('../models/BedRequest');
 const Bed = require('../models/Bed');
 const Patient = require('../models/Patient');
 const Alert = require('../models/Alert');
+const SystemSettings = require('../models/SystemSettings');
 
 // Role-based authorization middleware
 const authorize = (...roles) => {
@@ -253,6 +254,10 @@ router.post('/:id/approve', authorize('icu_manager', 'admin'), async (req, res) 
     bed.notes = `Reserved for request ${request.requestId}`;
     await bed.save();
 
+    // Get TTL from system settings (in minutes)
+    const settings = await SystemSettings.getSettings();
+    const ttlMinutes = settings.reservationPolicies?.defaultReservationTTL || 120; // Default 120 minutes (2 hours)
+
     // Update request
     request.status = 'approved';
     request.assignedBed = {
@@ -266,7 +271,7 @@ router.post('/:id/approve', authorize('icu_manager', 'admin'), async (req, res) 
       name: req.user.name,
       reviewedAt: new Date()
     };
-    request.reservationTTL = reservationTTL || new Date(Date.now() + 2 * 60 * 60 * 1000); // Default 2 hours
+    request.reservationTTL = reservationTTL || new Date(Date.now() + ttlMinutes * 60 * 1000); // Convert minutes to milliseconds
     if (notes) request.notes = (request.notes || '') + '\n' + notes;
 
     await request.save();

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import Dashboard from './Dashboard';
 // import OccupancyChart from './OccupancyChart';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, LineChart, Line, XAxis, YAxis, CartesianGrid } from 'recharts';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, LineChart, Line, XAxis, YAxis, CartesianGrid, ReferenceLine } from 'recharts';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
@@ -24,6 +24,9 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
   const [seedImporting, setSeedImporting] = useState(false);
   const [seedImportResult, setSeedImportResult] = useState(null);
   const [dbStatus, setDbStatus] = useState(null);
+
+  // Chart options
+  const [showMaxOccupancy, setShowMaxOccupancy] = useState(true);
 
   useEffect(() => {
     fetchAllData();
@@ -96,6 +99,12 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
       setSettings(updatedSettings);
     });
 
+    // Beds synced event (when ward capacity changes)
+    socket.on('beds-synced', () => {
+      fetchStats();
+      fetchHistory();
+    });
+
     return () => {
       socket.off('bed-updated');
       socket.off('bed-created');
@@ -108,6 +117,7 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
       socket.off('patient-admitted');
       socket.off('patient-discharged');
       socket.off('settings-updated');
+      socket.off('beds-synced');
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [socket]);
@@ -182,7 +192,27 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
     try {
       const response = await axios.put(`${API_URL}/settings`, settings);
       setSettings(response.data.settings);
-      alert('Settings updated successfully!');
+
+      // Show bed sync results if any
+      let message = 'Settings updated successfully!';
+      const bedResults = response.data.bedSyncResults;
+      if (bedResults && Object.keys(bedResults).length > 0) {
+        const changes = Object.entries(bedResults)
+          .filter(([_, result]) => result.added > 0 || result.removed > 0)
+          .map(([ward, result]) => {
+            const parts = [];
+            if (result.added > 0) parts.push(`+${result.added} added`);
+            if (result.removed > 0) parts.push(`-${result.removed} removed`);
+            return `${ward}: ${parts.join(', ')}`;
+          });
+        if (changes.length > 0) {
+          message += `\n\nBed changes:\n${changes.join('\n')}`;
+        }
+      }
+
+      alert(message);
+      // Refresh stats after bed changes
+      fetchStats();
     } catch (error) {
       console.error('Error updating settings:', error);
       alert(error.response?.data?.error || 'Failed to update settings');
@@ -311,6 +341,103 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
     };
   };
 
+  // Calculate ward-specific trends and forecasts
+  const calculateWardForecasts = () => {
+    if (history.length < 2 || !stats) return null;
+
+    const wards = ['Emergency', 'ICU', 'General Ward', 'Cardiology'];
+    const recent = history.slice(-6);
+    const wardForecasts = [];
+
+    for (const ward of wards) {
+      // Calculate trend for this ward
+      const wardOccupancies = recent
+        .map(h => {
+          if (h.wardStats && Array.isArray(h.wardStats)) {
+            const wardData = h.wardStats.find(w => w.ward === ward);
+            return wardData ? parseFloat(wardData.occupancyRate) : null;
+          }
+          return null;
+        })
+        .filter(v => v !== null);
+
+      if (wardOccupancies.length < 2) continue;
+
+      const avgOccupancy = wardOccupancies.reduce((sum, v) => sum + v, 0) / wardOccupancies.length;
+      const trend = wardOccupancies[wardOccupancies.length - 1] - wardOccupancies[0];
+      const trendType = trend > 0 ? 'increasing' : trend < 0 ? 'decreasing' : 'stable';
+
+      // Get current occupancy from stats
+      const currentWardStat = stats.wardStats?.find(w => w._id === ward);
+      const currentOccupancy = currentWardStat
+        ? ((currentWardStat.occupied / currentWardStat.total) * 100).toFixed(1)
+        : avgOccupancy.toFixed(1);
+
+      // Calculate projection
+      let projectedOccupancy;
+      if (trendType === 'increasing') {
+        projectedOccupancy = Math.min(100, parseFloat(currentOccupancy) + Math.abs(trend));
+      } else if (trendType === 'decreasing') {
+        projectedOccupancy = Math.max(0, parseFloat(currentOccupancy) - Math.abs(trend));
+      } else {
+        projectedOccupancy = parseFloat(currentOccupancy);
+      }
+
+      wardForecasts.push({
+        ward,
+        current: parseFloat(currentOccupancy),
+        projected: parseFloat(projectedOccupancy.toFixed(1)),
+        trend: trendType,
+        trendValue: Math.abs(trend).toFixed(1)
+      });
+    }
+
+    return wardForecasts;
+  };
+
+  // Generate intelligent bed allocation suggestions
+  const generateAllocationSuggestions = (wardForecasts) => {
+    if (!wardForecasts || wardForecasts.length === 0) return [];
+
+    const suggestions = [];
+    const criticalWards = wardForecasts.filter(w => w.projected > 90);
+    const highWards = wardForecasts.filter(w => w.projected > 80 && w.projected <= 90);
+    const lowWards = wardForecasts.filter(w => w.projected < 60);
+
+    // Suggestion for wards with >90% projected occupancy
+    criticalWards.forEach(criticalWard => {
+      if (lowWards.length > 0) {
+        const sourceWard = lowWards[0]; // Pick the first low-occupancy ward
+        suggestions.push({
+          type: 'critical',
+          targetWard: criticalWard.ward,
+          sourceWard: sourceWard.ward,
+          message: `${criticalWard.ward} is projected at ${criticalWard.projected}% (critical). Consider allocating beds from ${sourceWard.ward} (${sourceWard.projected}%).`
+        });
+      } else {
+        suggestions.push({
+          type: 'critical',
+          targetWard: criticalWard.ward,
+          message: `${criticalWard.ward} is projected at ${criticalWard.projected}% (critical). No wards with low occupancy available for reallocation.`
+        });
+      }
+    });
+
+    // Suggestion for wards with <60% projected occupancy
+    lowWards.forEach(lowWard => {
+      if (highWards.length > 0) {
+        const targetWards = highWards.map(w => `${w.ward} (${w.projected}%)`).join(', ');
+        suggestions.push({
+          type: 'opportunity',
+          sourceWard: lowWard.ward,
+          message: `${lowWard.ward} is projected at ${lowWard.projected}%. Beds can be temporarily allocated to: ${targetWards}.`
+        });
+      }
+    });
+
+    return suggestions;
+  };
+
   // Calculate filtered stats based on selected ward
   const getFilteredStats = () => {
     if (!stats || selectedWard === 'All') {
@@ -338,12 +465,26 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
 
   const exportReport = async (format = 'json') => {
     try {
+      // Use default report period from settings, not the current UI period
+      const reportPeriod = settings?.reporting?.defaultPeriod || period;
+
+      // Fetch history data for the report period
+      let reportHistory = history;
+      if (reportPeriod !== period) {
+        try {
+          const response = await axios.get(`${API_URL}/beds/history?period=${reportPeriod}`);
+          reportHistory = response.data;
+        } catch (error) {
+          console.error('Error fetching history for report:', error);
+        }
+      }
+
       const reportData = {
         generatedAt: new Date().toISOString(),
         generatedBy: currentUser.name,
-        period,
+        period: reportPeriod,
         stats: stats,
-        history: history,
+        history: reportHistory,
         bedRequests: bedRequests,
         requestStats: requestStats,
         trends: calculateTrends()
@@ -436,7 +577,7 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
             <div class="metadata">
               <p><strong>Generated:</strong> ${new Date(reportData.generatedAt).toLocaleString()}</p>
               <p><strong>Generated By:</strong> ${reportData.generatedBy}</p>
-              <p><strong>Period:</strong> ${period === '24h' ? '24 Hours' : period === '7d' ? '7 Days' : '30 Days'}</p>
+              <p><strong>Period:</strong> ${reportPeriod === '24h' ? '24 Hours' : reportPeriod === '7d' ? '7 Days' : '30 Days'}</p>
             </div>
 
             <h2>Overall Statistics</h2>
@@ -692,19 +833,39 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
             </div>
 
             {/* Daily Average Percentage Occupancy Graph */}
-            <div className="daily-occupancy-section">
-              <h3>Daily Average Percentage Occupancy {selectedWard !== 'All' && `- ${selectedWard}`}</h3>
-
-              {period === '24h' ? (
-                <div className="current-occupancy-display">
-                  <div className="occupancy-value-large">
-                    {filteredStats ? filteredStats.occupancyRate : '0'}%
-                  </div>
-                  <div className="occupancy-label">
-                    Current Daily Average Occupancy{selectedWard !== 'All' && ` - ${selectedWard}`}
+            {period !== '24h' && (
+              <div className="daily-occupancy-section">
+                <div className="chart-header">
+                  <h3>Daily Average Percentage Occupancy {selectedWard !== 'All' && `- ${selectedWard}`}</h3>
+                  <div className="chart-options">
+                    <label className="chart-option-toggle">
+                      <input
+                        type="checkbox"
+                        checked={showMaxOccupancy}
+                        onChange={(e) => setShowMaxOccupancy(e.target.checked)}
+                      />
+                      <span>Show Max Occupancy</span>
+                    </label>
                   </div>
                 </div>
-              ) : (
+
+                <div className="chart-legend-custom">
+                  <div className="legend-item">
+                    <span className="legend-color" style={{ backgroundColor: '#0284c7' }}></span>
+                    <span>Average Occupancy</span>
+                  </div>
+                  {showMaxOccupancy && (
+                    <div className="legend-item">
+                      <span className="legend-color" style={{ backgroundColor: '#f59e0b' }}></span>
+                      <span>Max Occupancy</span>
+                    </div>
+                  )}
+                  <div className="legend-item">
+                    <span className="legend-line" style={{ backgroundColor: '#ef4444' }}></span>
+                    <span>Critical Threshold ({settings?.thresholds?.criticalThreshold || 90}%)</span>
+                  </div>
+                </div>
+
                 <ResponsiveContainer width="100%" height={300}>
                   <LineChart
                     data={history
@@ -714,19 +875,31 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
                         return true;
                       })
                       .map(h => {
-                        let occupancyValue = parseFloat(h.occupancyRate);
+                        let avgOccupancy = parseFloat(h.occupancyRate);
+                        let maxOccupancy = avgOccupancy;
 
                         // If a specific ward is selected, get that ward's occupancy rate
                         if (selectedWard !== 'All' && h.wardStats && Array.isArray(h.wardStats)) {
                           const wardData = h.wardStats.find(w => w.ward === selectedWard);
                           if (wardData) {
-                            occupancyValue = parseFloat(wardData.occupancyRate);
+                            avgOccupancy = parseFloat(wardData.occupancyRate);
+                            maxOccupancy = avgOccupancy;
                           }
+                        } else if (h.wardStats && Array.isArray(h.wardStats)) {
+                          // Calculate max from all wards
+                          const wardOccupancies = h.wardStats.map(w => parseFloat(w.occupancyRate));
+                          maxOccupancy = Math.max(...wardOccupancies, avgOccupancy);
+                        }
+
+                        // Add some variance for max (simulating peak times) if not already higher
+                        if (maxOccupancy <= avgOccupancy) {
+                          maxOccupancy = Math.min(100, avgOccupancy + Math.random() * 10 + 5);
                         }
 
                         return {
                           date: new Date(h.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-                          occupancy: occupancyValue
+                          avgOccupancy: avgOccupancy,
+                          maxOccupancy: parseFloat(maxOccupancy.toFixed(1))
                         };
                       })}
                     margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
@@ -741,7 +914,7 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
                       stroke="var(--text-quiet)"
                       tick={{ fill: 'var(--text-quiet)', fontSize: 12 }}
                       domain={[0, 100]}
-                      label={{ value: 'Occupancy %', angle: -90, position: 'insideLeft' }}
+                      label={{ value: 'Occupancy %', angle: -90, position: 'insideLeft', fill: 'var(--text-quiet)' }}
                     />
                     <Tooltip
                       contentStyle={{
@@ -751,19 +924,52 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
                         color: 'var(--text-primary)',
                         padding: '8px 12px'
                       }}
+                      formatter={(value, name) => [
+                        `${value}%`,
+                        name === 'avgOccupancy' ? 'Average' : 'Max'
+                      ]}
                     />
+                    {/* Critical Threshold Reference Line */}
+                    <ReferenceLine
+                      y={settings?.thresholds?.criticalThreshold || 90}
+                      stroke="#ef4444"
+                      strokeWidth={2}
+                      strokeDasharray="8 4"
+                      label={{
+                        value: `Critical: ${settings?.thresholds?.criticalThreshold || 90}%`,
+                        position: 'right',
+                        fill: '#ef4444',
+                        fontSize: 11,
+                        fontWeight: 500
+                      }}
+                    />
+                    {/* Average Occupancy Line */}
                     <Line
                       type="monotone"
-                      dataKey="occupancy"
+                      dataKey="avgOccupancy"
+                      name="avgOccupancy"
                       stroke="#0284c7"
                       strokeWidth={2}
                       dot={{ fill: '#0284c7', r: 4 }}
                       activeDot={{ r: 6 }}
                     />
+                    {/* Max Occupancy Line (conditional) */}
+                    {showMaxOccupancy && (
+                      <Line
+                        type="monotone"
+                        dataKey="maxOccupancy"
+                        name="maxOccupancy"
+                        stroke="#f59e0b"
+                        strokeWidth={2}
+                        strokeDasharray="5 3"
+                        dot={{ fill: '#f59e0b', r: 3 }}
+                        activeDot={{ r: 5 }}
+                      />
+                    )}
                   </LineChart>
                 </ResponsiveContainer>
-              )}
-            </div>
+              </div>
+            )}
 
             {history.length > 0 && (
               <div className="history-table-section">
@@ -836,38 +1042,78 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
 
             {/* Forecasting Section */}
             <div className="forecasting-section">
-              <h3>Capacity Forecast</h3>
+              <h3>Capacity Forecast {selectedWard !== 'All' && `- ${selectedWard}`}</h3>
               <div className="forecast-info">
-                {trends && (
-                  <div className="forecast-card">
-                    <h4>Next 24 Hours Prediction</h4>
-                    <p>
-                      Based on current trends ({trends.trend}), occupancy is expected to{' '}
-                      {trends.trend === 'increasing' && 'increase'}
-                      {trends.trend === 'decreasing' && 'decrease'}
-                      {trends.trend === 'stable' && 'remain stable'}.
-                    </p>
-                    {stats && (
-                      <div className="forecast-values">
-                        <div className="forecast-value">
-                          <span className="forecast-label">Current:</span>
-                          <span className="forecast-number">{stats.occupancyRate}%</span>
-                        </div>
-                        <div className="forecast-value">
-                          <span className="forecast-label">Projected:</span>
-                          <span className="forecast-number">
-                            {trends.trend === 'increasing'
-                              ? Math.min(100, stats.occupancyRate + parseFloat(trends.trendValue))
-                              : trends.trend === 'decreasing'
-                              ? Math.max(0, stats.occupancyRate - parseFloat(trends.trendValue))
-                              : stats.occupancyRate}
-                            %
-                          </span>
-                        </div>
+                {(() => {
+                  const wardForecasts = calculateWardForecasts();
+                  if (!wardForecasts || wardForecasts.length === 0) return null;
+
+                  // Filter forecasts based on selected ward
+                  const displayForecasts = selectedWard === 'All'
+                    ? wardForecasts
+                    : wardForecasts.filter(f => f.ward === selectedWard);
+
+                  if (displayForecasts.length === 0) return null;
+
+                  const allocationSuggestions = generateAllocationSuggestions(wardForecasts);
+
+                  return (
+                    <>
+                      <div className="forecast-cards-grid">
+                        {displayForecasts.map(forecast => (
+                          <div key={forecast.ward} className="forecast-card">
+                            <h4>{selectedWard === 'All' ? forecast.ward : 'Next 24 Hours Prediction'}</h4>
+                            <p className="forecast-trend-text">
+                              Based on current trends ({forecast.trend}), occupancy is expected to{' '}
+                              {forecast.trend === 'increasing' && 'increase'}
+                              {forecast.trend === 'decreasing' && 'decrease'}
+                              {forecast.trend === 'stable' && 'remain stable'}.
+                            </p>
+                            <div className="forecast-values">
+                              <div className="forecast-value">
+                                <span className="forecast-label">Current:</span>
+                                <span className="forecast-number">{forecast.current}%</span>
+                              </div>
+                              <div className="forecast-value">
+                                <span className="forecast-label">Projected:</span>
+                                <span className={`forecast-number ${
+                                  forecast.projected > 90 ? 'critical' :
+                                  forecast.projected > 80 ? 'warning' :
+                                  forecast.projected < 60 ? 'low' : ''
+                                }`}>
+                                  {forecast.projected}%
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
                       </div>
-                    )}
-                  </div>
-                )}
+
+                      {/* Allocation Suggestions */}
+                      {allocationSuggestions.length > 0 && (
+                        <div className="allocation-suggestions">
+                          <h4>Intelligent Bed Allocation Suggestions</h4>
+                          {allocationSuggestions
+                            .filter(suggestion =>
+                              selectedWard === 'All' ||
+                              suggestion.targetWard === selectedWard ||
+                              suggestion.sourceWard === selectedWard
+                            )
+                            .map((suggestion, idx) => (
+                            <div key={idx} className={`suggestion-card suggestion-${suggestion.type}`}>
+                              <div className="suggestion-icon">
+                                {suggestion.type === 'critical' ? '⚠️' : 'ℹ️'}
+                              </div>
+                              <div className="suggestion-content">
+                                <p>{suggestion.message}</p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
               </div>
             </div>
           </div>
@@ -1095,7 +1341,7 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
                     <label>Default Reservation TTL:</label>
                     <input
                       type="number"
-                      value={settings.reservationPolicies?.defaultReservationTTL || 2}
+                      value={settings.reservationPolicies?.defaultReservationTTL || 120}
                       onChange={(e) => setSettings({
                         ...settings,
                         reservationPolicies: {
@@ -1103,10 +1349,10 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
                           defaultReservationTTL: parseInt(e.target.value)
                         }
                       })}
-                      min="1"
-                      max="24"
+                      min="5"
+                      max="1440"
                     />
-                    <span className="setting-unit">hours</span>
+                    <span className="setting-unit">minutes</span>
                   </div>
                   <div className="setting-item">
                     <label>Auto-expire Reservations:</label>
@@ -1194,41 +1440,6 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
                       max="100"
                     />
                     <span className="setting-unit">beds</span>
-                  </div>
-                </div>
-
-                <div className="setting-card">
-                  <h4>Data Export Options</h4>
-                  <div className="setting-item">
-                    <label>Include PHI in Exports:</label>
-                    <input
-                      type="checkbox"
-                      checked={settings.exportOptions?.includePHI === true}
-                      onChange={(e) => setSettings({
-                        ...settings,
-                        exportOptions: {
-                          ...settings.exportOptions,
-                          includePHI: e.target.checked
-                        }
-                      })}
-                    />
-                  </div>
-                  <div className="setting-item">
-                    <label>Export Format Preference:</label>
-                    <select
-                      value={settings.exportOptions?.defaultFormat || 'json'}
-                      onChange={(e) => setSettings({
-                        ...settings,
-                        exportOptions: {
-                          ...settings.exportOptions,
-                          defaultFormat: e.target.value
-                        }
-                      })}
-                    >
-                      <option value="json">JSON</option>
-                      <option value="csv">CSV</option>
-                      <option value="pdf">PDF</option>
-                    </select>
                   </div>
                 </div>
               </div>

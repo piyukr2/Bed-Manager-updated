@@ -54,6 +54,7 @@ function ICUManagerDashboard({
     eta: '',
     notes: ''
   });
+  const [settings, setSettings] = useState(null);
 
   // Set default ward to 'All' on mount to show all 60 beds
   useEffect(() => {
@@ -65,6 +66,7 @@ function ICUManagerDashboard({
 
   useEffect(() => {
     fetchBedRequests();
+    fetchSettings();
 
     const interval = setInterval(fetchBedRequests, 30000);
     return () => clearInterval(interval);
@@ -116,6 +118,15 @@ function ICUManagerDashboard({
     }
   };
 
+  const fetchSettings = async () => {
+    try {
+      const response = await axios.get(`${API_URL}/settings`);
+      setSettings(response.data);
+    } catch (error) {
+      console.error('Error fetching settings:', error);
+    }
+  };
+
   const handleRequestClick = async (request) => {
     setSelectedRequest(request);
     setShowRequestModal(true);
@@ -152,9 +163,10 @@ function ICUManagerDashboard({
 
   const handleApproveRequest = async (requestId, bedId) => {
     try {
+      const ttlMinutes = settings?.reservationPolicies?.defaultReservationTTL || 120;
       await axios.post(`${API_URL}/bed-requests/${requestId}/approve`, {
         bedId,
-        reservationTTL: new Date(Date.now() + 2 * 60 * 60 * 1000) // 2 hours
+        reservationTTL: new Date(Date.now() + ttlMinutes * 60 * 1000)
       });
 
       setShowRequestModal(false);
@@ -253,9 +265,10 @@ function ICUManagerDashboard({
 
       // If user wants to reserve a bed immediately, approve the request
       if (reserveBed && selectedBedId) {
+        const ttlMinutes = settings?.reservationPolicies?.defaultReservationTTL || 120;
         await axios.post(`${API_URL}/bed-requests/${createdRequest._id}/approve`, {
           bedId: selectedBedId,
-          reservationTTL: new Date(Date.now() + 2 * 60 * 60 * 1000) // 2 hours
+          reservationTTL: new Date(Date.now() + ttlMinutes * 60 * 1000)
         });
       }
 
