@@ -135,7 +135,6 @@ router.get('/stats', async (req, res) => {
     const available = await Bed.countDocuments({ ...query, status: 'available' });
     const cleaning = await Bed.countDocuments({ ...query, status: 'cleaning' });
     const reserved = await Bed.countDocuments({ ...query, status: 'reserved' });
-    const maintenance = await Bed.countDocuments({ ...query, status: 'maintenance' });
     
     // Ward-wise statistics
     // No ward filtering for any role - all roles see all ward stats
@@ -243,7 +242,6 @@ router.get('/stats', async (req, res) => {
       available,
       cleaning,
       reserved,
-      maintenance,
       occupancyRate,
       wardStats: wardStats.map(w => ({
         ward: w._id,
@@ -270,7 +268,6 @@ router.get('/stats', async (req, res) => {
       available,
       cleaning,
       reserved,
-      maintenance,
       occupancyRate,
       wardStats,
       equipmentStats,
@@ -342,11 +339,10 @@ router.put('/:id', authorize('admin', 'icu_manager', 'ward_staff'), async (req, 
     // Validate bed state transitions (only when status is provided)
     if (typeof status !== 'undefined' && status !== previousStatus) {
       const validTransitions = {
-        available: ['occupied', 'reserved', 'maintenance'],
-        occupied: ['cleaning', 'maintenance'],
-        cleaning: ['available', 'maintenance'],
-        reserved: ['occupied', 'available', 'maintenance'],
-        maintenance: ['available']
+        available: ['occupied', 'reserved', 'cleaning'],
+        occupied: ['cleaning', 'available'],
+        cleaning: ['available'],
+        reserved: ['occupied', 'available']
       };
 
       const allowedNextStates = validTransitions[previousStatus] || [];

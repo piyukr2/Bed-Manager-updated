@@ -4,8 +4,7 @@ const STATUS_LABELS = {
   available: 'Available',
   occupied: 'Occupied',
   cleaning: 'Cleaning',
-  reserved: 'Reserved',
-  maintenance: 'Maintenance'
+  reserved: 'Reserved'
 };
 
 // const STATUS_ICONS = {
@@ -25,7 +24,6 @@ const WARD_INFO = {
 
 function WardView({ beds, onUpdateBed, canUpdateBeds }) {
   const [selectedBed, setSelectedBed] = useState(null);
-  const [activeWard, setActiveWard] = useState('All wards'); // Default to "All wards"
   const [expandedWards, setExpandedWards] = useState({}); // Track expanded wards
 
   // Group beds by ward
@@ -79,7 +77,6 @@ function WardView({ beds, onUpdateBed, canUpdateBeds }) {
       occupied: bedsInWard.filter(b => b.status === 'occupied').length,
       cleaning: bedsInWard.filter(b => b.status === 'cleaning').length,
       reserved: bedsInWard.filter(b => b.status === 'reserved').length,
-      maintenance: bedsInWard.filter(b => b.status === 'maintenance').length,
     };
     stats.occupancyRate = stats.total > 0 ? Math.round((stats.occupied / stats.total) * 100) : 0;
     return stats;
@@ -87,49 +84,8 @@ function WardView({ beds, onUpdateBed, canUpdateBeds }) {
 
   return (
     <div className="ward-view-container">
-      <div className="ward-view-header">
-        <div>
-          <h2>Ward-Based View</h2>
-          <p className="header-caption">
-            Beds organized by hospital wards with real-time status updates
-          </p>
-        </div>
-        
-        <div className="ward-quick-filter">
-          {/* All wards button */}
-          <button
-            className={`ward-filter-btn ${activeWard === 'All wards' ? 'active' : ''}`}
-            onClick={() => setActiveWard('All wards')}
-          >
-            <span className="ward-icon">🏥</span>
-            <span className="ward-name">All wards</span>
-            <span className="ward-count">{beds.length}</span>
-          </button>
-          
-          {/* Individual ward buttons */}
-          {wards.map(ward => {
-            const stats = getWardStats(bedsByWard[ward]);
-            const wardInfo = WARD_INFO[ward] || {};
-            return (
-              <button
-                key={ward}
-                className={`ward-filter-btn ${activeWard === ward ? 'active' : ''}`}
-                onClick={() => setActiveWard(ward)}
-                style={{ borderColor: `var(--${wardInfo.color || 'gray'})` }}
-              >
-                <span className="ward-icon">{wardInfo.icon || '🏥'}</span>
-                <span className="ward-name">{ward}</span>
-                <span className="ward-count">{stats.occupied}/{stats.total}</span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
       <div className="ward-sections">
-        {wards
-          .filter(ward => activeWard === 'All wards' || activeWard === ward)
-          .map(ward => {
+        {wards.map(ward => {
             const wardBeds = bedsByWard[ward];
             const stats = getWardStats(wardBeds);
             const wardInfo = WARD_INFO[ward] || {};

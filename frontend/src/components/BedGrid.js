@@ -6,8 +6,7 @@ const STATUS_LABELS = {
   available: 'Available',
   occupied: 'Occupied',
   cleaning: 'Cleaning',
-  reserved: 'Reserved',
-  maintenance: 'Maintenance'
+  reserved: 'Reserved'
 };
 
 const STATUS_OPTIONS = Object.keys(STATUS_LABELS);
@@ -16,8 +15,7 @@ const STATUS_ICONS = {
   available: '🟢',
   occupied: '🔴',
   cleaning: '🧼',
-  reserved: '🟡',
-  maintenance: '🛠️'
+  reserved: '🟡'
 };
 
 function BedGrid({ beds, onUpdateBed, selectedWard, canUpdateBeds }) {
