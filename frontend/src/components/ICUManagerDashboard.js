@@ -3,10 +3,10 @@ import axios from 'axios';
 import Dashboard from './Dashboard';
 import OccupancyChart from './OccupancyChart';
 import AlertPanel from './AlertPanel';
-import BedGrid from './BedGrid';
+// import BedGrid from './BedGrid';
 import WardView from './WardView';
-import FloorPlan from './FloorPlan';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+// import FloorPlan from './FloorPlan';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
@@ -31,7 +31,7 @@ function ICUManagerDashboard({
   const [showRequestModal, setShowRequestModal] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [recommendedBeds, setRecommendedBeds] = useState([]);
-  const [bedViewMode, setBedViewMode] = useState('ward');
+  // const [bedViewMode, setBedViewMode] = useState('ward');
   const [activeTab, setActiveTab] = useState('overview'); // 'overview' or 'requests'
   const [showNewRequestAlert, setShowNewRequestAlert] = useState(false);
   const [newRequestNotification, setNewRequestNotification] = useState(null);
@@ -60,6 +60,7 @@ function ICUManagerDashboard({
     if (setSelectedWard) {
       setSelectedWard('All');
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -367,10 +368,7 @@ function ICUManagerDashboard({
             <div className="bed-manager-layout">
               {/* Left Side - Alerts and Notifications */}
               <div className="bed-manager-sidebar">
-                <div className="alerts-notification-center">
-                  <h3>Alerts & Notifications</h3>
-                  <AlertPanel alerts={alerts} />
-                </div>
+                <AlertPanel alerts={alerts} />
               </div>
 
               {/* Right Side - Main Content */}

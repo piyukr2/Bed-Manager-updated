@@ -8,13 +8,13 @@ const STATUS_LABELS = {
   maintenance: 'Maintenance'
 };
 
-const STATUS_ICONS = {
-  available: '🟢',
-  occupied: '🔴',
-  cleaning: '🧼',
-  reserved: '🟡',
-  maintenance: '🛠️'
-};
+// const STATUS_ICONS = {
+//   available: '🟢',
+//   occupied: '🔴',
+//   cleaning: '🧼',
+//   reserved: '🟡',
+//   maintenance: '🛠️'
+// };
 
 const WARD_INFO = {
   'Emergency': { floor: 'Ground Floor', icon: '🚑', color: 'red' },

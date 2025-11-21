@@ -1,12 +1,12 @@
 import React, { useMemo, useState, useEffect } from 'react';
 
-const STATUS_ICONS = {
-  available: '🟢',
-  occupied: '🔴',
-  cleaning: '🧼',
-  reserved: '🟡',
-  maintenance: '🛠️'
-};
+// const STATUS_ICONS = {
+//   available: '🟢',
+//   occupied: '🔴',
+//   cleaning: '🧼',
+//   reserved: '🟡',
+//   maintenance: '🛠️'
+// };
 
 const STATUS_LABELS = {
   available: 'Available',

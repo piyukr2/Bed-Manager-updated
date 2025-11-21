@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import Dashboard from './Dashboard';
-import OccupancyChart from './OccupancyChart';
+// import OccupancyChart from './OccupancyChart';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, LineChart, Line, XAxis, YAxis, CartesianGrid } from 'recharts';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
@@ -13,7 +13,7 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
   const [requestStats, setRequestStats] = useState(null);
   const [period, setPeriod] = useState('24h');
   const [activeTab, setActiveTab] = useState('overview'); // 'overview', 'analytics', 'requests', 'settings'
-  const [loading, setLoading] = useState(false);
+  // const [loading, setLoading] = useState(false);
   const [settings, setSettings] = useState(null);
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [selectedWard, setSelectedWard] = useState('All');
@@ -23,6 +23,7 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
 
     const interval = setInterval(fetchAllData, 60000); // Refresh every minute
     return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [period]);
 
   useEffect(() => {
@@ -101,10 +102,11 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
       socket.off('patient-discharged');
       socket.off('settings-updated');
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [socket]);
 
   const fetchAllData = async () => {
-    setLoading(true);
+    // setLoading(true);
     try {
       await Promise.all([
         fetchStats(),
@@ -115,9 +117,10 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
       ]);
     } catch (error) {
       console.error('Error fetching data:', error);
-    } finally {
-      setLoading(false);
     }
+    // finally {
+    //   setLoading(false);
+    // }
   };
 
   const fetchStats = async () => {
