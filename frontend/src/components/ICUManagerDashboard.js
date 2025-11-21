@@ -3,6 +3,7 @@ import axios from 'axios';
 import Dashboard from './Dashboard';
 import OccupancyChart from './OccupancyChart';
 import AlertPanel from './AlertPanel';
+import ResizableCard from './ResizableCard';
 // import BedGrid from './BedGrid';
 import WardView from './WardView';
 // import FloorPlan from './FloorPlan';
@@ -45,7 +46,7 @@ function ICUManagerDashboard({
       age: '',
       gender: 'Male',
       contactNumber: '',
-      triageLevel: 'Critical',
+      triageLevel: 'Urgent',
       reasonForAdmission: '',
       requiredEquipment: 'ICU Monitor',
       estimatedStay: 24
@@ -54,6 +55,22 @@ function ICUManagerDashboard({
     eta: '',
     notes: ''
   });
+
+  // Clear all resizable card dimensions on component mount (page refresh)
+  useEffect(() => {
+    const resizableKeys = [
+      'icu-alerts-width',
+      'icu-ward-filter-dimensions',
+      'icu-stats-dimensions',
+      'icu-capacity-graph-dimensions',
+      'icu-beds-view-dimensions',
+      'icu-requests-container-dimensions'
+    ];
+    
+    resizableKeys.forEach(key => {
+      localStorage.removeItem(key);
+    });
+  }, []);
 
   // Set default ward to 'All' on mount to show all 60 beds
   useEffect(() => {
@@ -125,7 +142,7 @@ function ICUManagerDashboard({
       const response = await axios.post(`${API_URL}/beds/recommend`, {
         ward: request.preferredWard,
         equipmentType: request.patientDetails.requiredEquipment,
-        urgency: request.patientDetails.triageLevel === 'Critical' ? 'high' : 'normal'
+        urgency: request.patientDetails.triageLevel === 'Urgent' ? 'high' : 'normal'
       });
 
       if (response.data.bed) {
@@ -266,7 +283,7 @@ function ICUManagerDashboard({
           age: '',
           gender: 'Male',
           contactNumber: '',
-          triageLevel: 'Critical',
+          triageLevel: 'Urgent',
           reasonForAdmission: '',
           requiredEquipment: 'ICU Monitor',
           estimatedStay: 24
@@ -295,10 +312,8 @@ function ICUManagerDashboard({
 
   const getTriageLevelClass = (level) => {
     const classes = {
-      Critical: 'triage-critical',
       Urgent: 'triage-urgent',
-      'Semi-Urgent': 'triage-semi-urgent',
-      'Non-Urgent': 'triage-non-urgent'
+      'Not Urgent': 'triage-non-urgent'
     };
     return classes[level] || '';
   };
@@ -366,15 +381,30 @@ function ICUManagerDashboard({
         {activeTab === 'overview' ? (
           <>
             <div className="bed-manager-layout">
-              {/* Left Side - Alerts and Notifications */}
-              <div className="bed-manager-sidebar">
+              {/* Left Side - Alerts and Notifications - Resizable */}
+              <ResizableCard
+                minWidth={250}
+                maxWidth={800}
+                minHeight={400}
+                enableWidth={true}
+                enableHeight={true}
+                storageKey="icu-alerts-width"
+                className="bed-manager-sidebar"
+              >
                 <AlertPanel alerts={alerts} />
-              </div>
+              </ResizableCard>
 
               {/* Right Side - Main Content */}
               <div className="bed-manager-main">
-                {/* Ward Filter Section */}
-                <div className="ward-filter-section-horizontal">
+                {/* Ward Filter Section - Resizable */}
+                <ResizableCard
+                  minWidth={400}
+                  minHeight={80}
+                  enableWidth={true}
+                  enableHeight={true}
+                  storageKey="icu-ward-filter-dimensions"
+                  className="ward-filter-section-horizontal"
+                >
                   <label className="ward-filter-label">Filter by Ward:</label>
                   <div className="ward-buttons-horizontal">
                     {wards.map((ward) => (
@@ -387,78 +417,222 @@ function ICUManagerDashboard({
                       </button>
                     ))}
                   </div>
-                </div>
+                </ResizableCard>
 
-                {/* Stats Section - Below Ward Filter */}
+                {/* Stats Section - Below Ward Filter - Resizable */}
                 {filteredStats && (
-                  <div className="stats-section-below-filter">
+                  <ResizableCard
+                    minWidth={400}
+                    minHeight={150}
+                    enableWidth={true}
+                    enableHeight={true}
+                    storageKey="icu-stats-dimensions"
+                    className="stats-section-below-filter"
+                  >
                     <Dashboard stats={filteredStats} />
-                  </div>
+                  </ResizableCard>
                 )}
 
-                {/* Bed Capacity Graph */}
+                {/* Bed Capacity Graph - Resizable */}
                 {filteredStats && (
-                  <div className="bed-capacity-graph-section">
-                    <h3>Hospital Bed Capacity Overview (All 60 Beds)</h3>
-                    <ResponsiveContainer width="100%" height={300}>
-                      <BarChart
-                        data={[
-                          { name: 'Emergency', total: 15, occupied: stats.wardStats?.find(w => w._id === 'Emergency')?.occupied || 0, available: stats.wardStats?.find(w => w._id === 'Emergency')?.available || 0 },
-                          { name: 'ICU', total: 15, occupied: stats.wardStats?.find(w => w._id === 'ICU')?.occupied || 0, available: stats.wardStats?.find(w => w._id === 'ICU')?.available || 0 },
-                          { name: 'General Ward', total: 15, occupied: stats.wardStats?.find(w => w._id === 'General Ward')?.occupied || 0, available: stats.wardStats?.find(w => w._id === 'General Ward')?.available || 0 },
-                          { name: 'Cardiology', total: 15, occupied: stats.wardStats?.find(w => w._id === 'Cardiology')?.occupied || 0, available: stats.wardStats?.find(w => w._id === 'Cardiology')?.available || 0 }
-                        ]}
-                        margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
-                      >
-                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(148, 163, 184, 0.15)" />
-                        <XAxis
-                          dataKey="name"
-                          stroke="var(--text-quiet)"
-                          tick={{ fill: 'var(--text-primary)', fontSize: 12 }}
-                        />
-                        <YAxis
-                          stroke="var(--text-quiet)"
-                          tick={{ fill: 'var(--text-quiet)', fontSize: 12 }}
-                          label={{ value: 'Number of Beds', angle: -90, position: 'insideLeft' }}
-                        />
-                        <Tooltip
-                          contentStyle={{
-                            backgroundColor: 'var(--surface-card)',
-                            border: '1px solid var(--border-soft)',
-                            borderRadius: '10px',
-                            color: 'var(--text-primary)',
-                            padding: '8px 12px'
-                          }}
-                        />
-                        <Bar dataKey="occupied" stackId="a" fill="#ef4444" name="Occupied" />
-                        <Bar dataKey="available" stackId="a" fill="#10b981" name="Available" />
-                      </BarChart>
-                    </ResponsiveContainer>
-                    <div className="capacity-legend">
-                      <div className="legend-item">
-                        <span className="legend-color" style={{backgroundColor: '#ef4444'}}></span>
-                        <span>Occupied</span>
+                  <ResizableCard
+                    minWidth={400}
+                    minHeight={250}
+                    enableWidth={true}
+                    enableHeight={true}
+                    storageKey="icu-capacity-graph-dimensions"
+                    className="bed-capacity-graph-section"
+                  >
+                    <div className="graph-header">
+                      <div>
+                        <h3>Hospital Bed Capacity Overview</h3>
+                        <p className="graph-subtitle">Real-time ward occupancy across all departments</p>
                       </div>
-                      <div className="legend-item">
-                        <span className="legend-color" style={{backgroundColor: '#10b981'}}></span>
-                        <span>Available</span>
-                      </div>
-                      <div className="legend-item">
-                        <span className="legend-info">Total Hospital Capacity: 60 Beds (15 per ward)</span>
+                      <div className="capacity-legend-inline">
+                        <div className="legend-item">
+                          <span className="legend-dot occupied"></span>
+                          <span>Occupied</span>
+                        </div>
+                        <div className="legend-item">
+                          <span className="legend-dot available"></span>
+                          <span>Available</span>
+                        </div>
+                        <div className="legend-item capacity-total">
+                          <span className="capacity-icon">🏥</span>
+                          <span>{stats.totalBeds} Total Beds</span>
+                        </div>
                       </div>
                     </div>
-                  </div>
+                    <ResponsiveContainer width="100%" height={350}>
+                      <BarChart
+                        data={(() => {
+                          const wardNames = ['Emergency', 'ICU', 'General Ward', 'Cardiology'];
+                          return wardNames.map(wardName => {
+                            const wardData = stats.wardStats?.find(w => w._id === wardName);
+                            const occupied = wardData?.occupied || 0;
+                            const available = wardData?.available || 0;
+                            const cleaning = wardData?.cleaning || 0;
+                            const reserved = wardData?.reserved || 0;
+                            const total = occupied + available + cleaning + reserved;
+                            const occupancyRate = total > 0 ? ((occupied / total) * 100).toFixed(0) : 0;
+                            
+                            return {
+                              name: wardName,
+                              total,
+                              occupied,
+                              available,
+                              cleaning,
+                              reserved,
+                              occupancyRate
+                            };
+                          });
+                        })()}
+                        margin={{ top: 30, right: 40, left: 20, bottom: 30 }}
+                        barGap={8}
+                        barCategoryGap="25%"
+                      >
+                        <defs>
+                          <linearGradient id="occupiedGradient" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#ef4444" stopOpacity={0.9}/>
+                            <stop offset="100%" stopColor="#dc2626" stopOpacity={1}/>
+                          </linearGradient>
+                          <linearGradient id="availableGradient" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#10b981" stopOpacity={0.9}/>
+                            <stop offset="100%" stopColor="#059669" stopOpacity={1}/>
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid 
+                          strokeDasharray="3 3" 
+                          stroke="var(--border-soft)" 
+                          vertical={false}
+                          opacity={0.5}
+                        />
+                        <XAxis
+                          dataKey="name"
+                          axisLine={{ stroke: 'var(--border-soft)', strokeWidth: 1 }}
+                          tickLine={false}
+                          tick={{ 
+                            fill: 'var(--text-primary)', 
+                            fontSize: 13,
+                            fontWeight: 500
+                          }}
+                          dy={10}
+                        />
+                        <YAxis
+                          axisLine={false}
+                          tickLine={false}
+                          tick={{ 
+                            fill: 'var(--text-quiet)', 
+                            fontSize: 12
+                          }}
+                          label={{ 
+                            value: 'Number of Beds', 
+                            angle: -90, 
+                            position: 'insideLeft',
+                            style: { 
+                              fill: 'var(--text-quiet)',
+                              fontSize: 13,
+                              fontWeight: 500
+                            }
+                          }}
+                          domain={[0, 15]}
+                        />
+                        <Tooltip
+                          cursor={{ fill: 'rgba(148, 163, 184, 0.1)', radius: 8 }}
+                          content={({ active, payload }) => {
+                            if (active && payload && payload.length) {
+                              const data = payload[0].payload;
+                              return (
+                                <div className="custom-tooltip">
+                                  <div className="tooltip-header">{data.name}</div>
+                                  <div className="tooltip-body">
+                                    <div className="tooltip-row">
+                                      <span className="tooltip-label">
+                                        <span className="tooltip-dot occupied"></span>
+                                        Occupied:
+                                      </span>
+                                      <span className="tooltip-value">{data.occupied} beds</span>
+                                    </div>
+                                    <div className="tooltip-row">
+                                      <span className="tooltip-label">
+                                        <span className="tooltip-dot available"></span>
+                                        Available:
+                                      </span>
+                                      <span className="tooltip-value">{data.available} beds</span>
+                                    </div>
+                                    {data.cleaning > 0 && (
+                                      <div className="tooltip-row">
+                                        <span className="tooltip-label">
+                                          <span className="tooltip-dot cleaning"></span>
+                                          Cleaning:
+                                        </span>
+                                        <span className="tooltip-value">{data.cleaning} beds</span>
+                                      </div>
+                                    )}
+                                    {data.reserved > 0 && (
+                                      <div className="tooltip-row">
+                                        <span className="tooltip-label">
+                                          <span className="tooltip-dot reserved"></span>
+                                          Reserved:
+                                        </span>
+                                        <span className="tooltip-value">{data.reserved} beds</span>
+                                      </div>
+                                    )}
+                                    <div className="tooltip-divider"></div>
+                                    <div className="tooltip-row">
+                                      <span className="tooltip-label">Total Capacity:</span>
+                                      <span className="tooltip-value">{data.total} beds</span>
+                                    </div>
+                                    <div className="tooltip-row">
+                                      <span className="tooltip-label">Occupancy Rate:</span>
+                                      <span className="tooltip-value occupancy-rate">{data.occupancyRate}%</span>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            }
+                            return null;
+                          }}
+                        />
+                        <Bar 
+                          dataKey="occupied" 
+                          stackId="a" 
+                          fill="url(#occupiedGradient)" 
+                          name="Occupied"
+                          radius={[0, 0, 0, 0]}
+                          animationDuration={800}
+                          animationBegin={0}
+                        />
+                        <Bar 
+                          dataKey="available" 
+                          stackId="a" 
+                          fill="url(#availableGradient)" 
+                          name="Available"
+                          radius={[8, 8, 0, 0]}
+                          animationDuration={800}
+                          animationBegin={200}
+                        />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </ResizableCard>
                 )}
 
-                {/* Current Occupancy and Bed Distribution - Below Stats */}
+                {/* Current Occupancy and Bed Distribution - Below Stats
                 {filteredStats && (
                   <div className="occupancy-chart-section-below-filter">
                     <OccupancyChart stats={filteredStats} />
                   </div>
-                )}
+                )} */}
 
-                {/* Main Dashboard - Bed Views - All beds displayed */}
-                <main className="dashboard-main-beds">
+                {/* Main Dashboard - Bed Views - All beds displayed - Resizable */}
+                <ResizableCard
+                  minWidth={400}
+                  minHeight={300}
+                  enableWidth={true}
+                  enableHeight={true}
+                  storageKey="icu-beds-view-dimensions"
+                  className="dashboard-main-beds"
+                >
                   <div className="beds-section-header">
                     <h2>All Hospital Beds {selectedWard !== 'All' && `- ${selectedWard}`}</h2>
                     <p className="beds-count">{filteredBeds.length} beds</p>
@@ -468,13 +642,20 @@ function ICUManagerDashboard({
                     onUpdateBed={onUpdateBed}
                     canUpdateBeds={true}
                   />
-                </main>
+                </ResizableCard>
               </div>
             </div>
           </>
         ) : (
           /* Bed Requests Tab */
-          <div className="requests-container">
+          <ResizableCard
+            minWidth={600}
+            minHeight={400}
+            enableWidth={true}
+            enableHeight={true}
+            storageKey="icu-requests-container-dimensions"
+            className="requests-container"
+          >
             <div className="requests-header">
               <h2>Pending Bed Requests</h2>
               <p>Review and assign beds to incoming patient requests from ER</p>
@@ -574,7 +755,7 @@ function ICUManagerDashboard({
                 ))}
               </div>
             )}
-          </div>
+          </ResizableCard>
         )}
       </div>
 
@@ -668,10 +849,8 @@ function ICUManagerDashboard({
                       })}
                       className={`triage-select ${getTriageLevelClass(newRequest.patientDetails.triageLevel)}`}
                     >
-                      <option value="Critical">Critical</option>
                       <option value="Urgent">Urgent</option>
-                      <option value="Semi-Urgent">Semi-Urgent</option>
-                      <option value="Non-Urgent">Non-Urgent</option>
+                      <option value="Not Urgent">Not Urgent</option>
                     </select>
                   </div>
 
