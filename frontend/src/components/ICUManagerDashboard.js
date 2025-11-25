@@ -40,6 +40,9 @@ function ICUManagerDashboard({
   const [availableBeds, setAvailableBeds] = useState([]);
   const [reserveBed, setReserveBed] = useState(false);
   const [selectedBedId, setSelectedBedId] = useState('');
+  const [showDenyModal, setShowDenyModal] = useState(false);
+  const [denyReason, setDenyReason] = useState('');
+  const [requestToDeny, setRequestToDeny] = useState(null);
   const [newRequest, setNewRequest] = useState({
     patientDetails: {
       name: '',
@@ -183,17 +186,28 @@ function ICUManagerDashboard({
     }
   };
 
-  const handleDenyRequest = async (requestId, reason) => {
-    const denialReason = reason || prompt('Enter denial reason:');
-    if (!denialReason) return;
+  const handleDenyRequest = (requestId) => {
+    setRequestToDeny(requestId);
+    setShowDenyModal(true);
+    setDenyReason('');
+  };
+
+  const confirmDenyRequest = async () => {
+    if (!denyReason.trim()) {
+      alert('Please enter a reason for denial');
+      return;
+    }
 
     try {
-      await axios.post(`${API_URL}/bed-requests/${requestId}/deny`, {
-        reason: denialReason
+      await axios.post(`${API_URL}/bed-requests/${requestToDeny}/deny`, {
+        reason: denyReason
       });
 
+      setShowDenyModal(false);
       setShowRequestModal(false);
       setSelectedRequest(null);
+      setRequestToDeny(null);
+      setDenyReason('');
       fetchBedRequests();
     } catch (error) {
       console.error('Error denying request:', error);
@@ -1167,6 +1181,53 @@ function ICUManagerDashboard({
                 }}
               >
                 View & Assign Bed
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Deny Request Modal */}
+      {showDenyModal && (
+        <div className="modal-overlay" onClick={() => setShowDenyModal(false)}>
+          <div className="modal-content deny-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Deny Bed Request</h2>
+              <button className="modal-close" onClick={() => setShowDenyModal(false)}>×</button>
+            </div>
+
+            <div className="modal-body">
+             
+              
+              <div className="form-group">
+                <textarea
+                  value={denyReason}
+                  onChange={(e) => setDenyReason(e.target.value)}
+                  placeholder="Enter the reason for denial (e.g., No available beds, Patient redirected to another facility, etc.)"
+                  rows="4"
+                  autoFocus
+                  className="deny-reason-textarea"
+                />
+              </div>
+            </div>
+
+            <div className="modal-actions">
+              <button
+                className="btn-secondary"
+                onClick={() => {
+                  setShowDenyModal(false);
+                  setDenyReason('');
+                  setRequestToDeny(null);
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                className="btn-danger"
+                onClick={confirmDenyRequest}
+                disabled={!denyReason.trim()}
+              >
+                Confirm Denial
               </button>
             </div>
           </div>

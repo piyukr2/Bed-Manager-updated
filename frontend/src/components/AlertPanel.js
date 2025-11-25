@@ -55,9 +55,6 @@ function AlertPanel({ alerts = [] }) {
       <div className="panel-header">
         <div>
           <h3>Alerts & Notifications</h3>
-          <span className="panel-subtext">
-            {sortedAlerts.length} ACTIVE ALERT{sortedAlerts.length === 1 ? '' : 'S'}
-          </span>
         </div>
       </div>
       <div className="alerts-container">
@@ -104,7 +101,7 @@ function AlertPanel({ alerts = [] }) {
                 </>
               ) : (
                 <>
-                  Load More ({remainingCount} more alert{remainingCount === 1 ? '' : 's'})
+                  Load more ({remainingCount} more alert{remainingCount === 1 ? '' : 's'})
                 </>
               )}
             </button>
