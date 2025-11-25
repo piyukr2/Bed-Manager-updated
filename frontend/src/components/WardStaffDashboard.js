@@ -11,6 +11,8 @@ function WardStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socke
   const [loading, setLoading] = useState(false);
   const [selectedBed, setSelectedBed] = useState(null);
   const [showIssueModal, setShowIssueModal] = useState(false);
+  const [showDischargeModal, setShowDischargeModal] = useState(false);
+  const [bedToDischarge, setBedToDischarge] = useState(null);
   const [selectedWard, setSelectedWard] = useState('All'); // Default to 'All' for ward staff
   const [selectedStatus, setSelectedStatus] = useState('all'); // Filter by bed status: 'all', 'available', 'occupied', 'cleaning', 'reserved', 'maintenance'
   const [searchQuery, setSearchQuery] = useState(''); // Search by bed number, patient name, location, equipment
@@ -87,22 +89,43 @@ function WardStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socke
   }, [socket, selectedWard]);
 
   const handleBedStatusChange = async (bedId, newStatus, bed) => {
+    // If changing from occupied to cleaning, show discharge confirmation modal
+    if (bed && bed.status === 'occupied' && newStatus === 'cleaning' && bed.patientId) {
+      setBedToDischarge({ bedId, bed });
+      setShowDischargeModal(true);
+      return;
+    }
+
+    // For other status changes, proceed directly
     setLoading(true);
     try {
-      // If changing from occupied to cleaning, discharge the patient first
-      if (bed && bed.status === 'occupied' && newStatus === 'cleaning' && bed.patientId) {
-        if (!window.confirm('This will discharge the patient and mark the bed for cleaning. Continue?')) {
-          setLoading(false);
-          return;
-        }
-        await axios.delete(`${API_URL}/patients/${bed.patientId._id}`);
-      }
-
       await axios.put(`${API_URL}/beds/${bedId}`, { status: newStatus });
       fetchData();
     } catch (error) {
       console.error('Error updating bed status:', error);
       alert(error.response?.data?.error || 'Failed to update bed status');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const confirmDischarge = async () => {
+    if (!bedToDischarge) return;
+
+    setLoading(true);
+    try {
+      // Discharge the patient
+      await axios.delete(`${API_URL}/patients/${bedToDischarge.bed.patientId._id}`);
+      
+      // Mark bed as cleaning
+      await axios.put(`${API_URL}/beds/${bedToDischarge.bedId}`, { status: 'cleaning' });
+      
+      setShowDischargeModal(false);
+      setBedToDischarge(null);
+      fetchData();
+    } catch (error) {
+      console.error('Error discharging patient:', error);
+      alert(error.response?.data?.error || 'Failed to discharge patient');
     } finally {
       setLoading(false);
     }
@@ -651,6 +674,73 @@ function WardStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socke
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Discharge Confirmation Modal */}
+      {showDischargeModal && bedToDischarge && (
+        <div className="modal-overlay" onClick={() => setShowDischargeModal(false)}>
+          <div className="modal-content discharge-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Confirm Patient Discharge</h2>
+              <button className="modal-close" onClick={() => setShowDischargeModal(false)}>×</button>
+            </div>
+
+            <div className="modal-body">
+              <p className="discharge-warning">
+                ⚠️ This will discharge the patient and mark the bed for cleaning. This action cannot be undone.
+              </p>
+              
+              <div className="discharge-details">
+                <h4>Bed Information</h4>
+                <div className="detail-row">
+                  <span className="detail-label">Bed Number:</span>
+                  <span className="detail-value">{bedToDischarge.bed.bedNumber}</span>
+                </div>
+                <div className="detail-row">
+                  <span className="detail-label">Ward:</span>
+                  <span className="detail-value">{bedToDischarge.bed.ward}</span>
+                </div>
+                {bedToDischarge.bed.patientId && (
+                  <>
+                    <h4 style={{ marginTop: '1rem' }}>Patient Information</h4>
+                    <div className="detail-row">
+                      <span className="detail-label">Patient Name:</span>
+                      <span className="detail-value">{bedToDischarge.bed.patientId.name}</span>
+                    </div>
+                    {bedToDischarge.bed.patientId.admissionDate && (
+                      <div className="detail-row">
+                        <span className="detail-label">Admitted:</span>
+                        <span className="detail-value">{formatDateTime(bedToDischarge.bed.patientId.admissionDate)}</span>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => {
+                  setShowDischargeModal(false);
+                  setBedToDischarge(null);
+                }}
+                disabled={loading}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn-danger"
+                onClick={confirmDischarge}
+                disabled={loading}
+              >
+                {loading ? 'Processing...' : 'Confirm Discharge'}
+              </button>
+            </div>
           </div>
         </div>
       )}
