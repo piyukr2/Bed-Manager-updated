@@ -52,21 +52,6 @@ function App() {
   //   : 'Offline';
   // const [bedViewMode, setBedViewMode] = useState('ward'); // 'ward', 'floor', or 'grid'
 
-  // Axios interceptor to add auth token
-  useEffect(() => {
-    const interceptor = axios.interceptors.request.use(
-      (config) => {
-        if (token) {
-          config.headers.Authorization = `Bearer ${token}`;
-        }
-        return config;
-      },
-      (error) => Promise.reject(error)
-    );
-
-    return () => axios.interceptors.request.eject(interceptor);
-  }, [token]);
-
   // Apply theme preference
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
@@ -239,7 +224,7 @@ function App() {
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = useCallback(() => {
     setToken(null);
     setCurrentUser(null);
     localStorage.removeItem('token');
@@ -249,7 +234,7 @@ function App() {
     }
     setShowHome(true);
     setShowLogin(false);
-  };
+  }, [socket]);
 
   const toggleTheme = () => {
     setTheme(prev => (prev === 'light' ? 'dark' : 'light'));
@@ -350,6 +335,40 @@ function App() {
       setCriticalAlerts(prev => [...prev, alertPayload]);
     }
   }, []);
+
+  // Axios interceptors to add auth token and handle errors
+  useEffect(() => {
+    const requestInterceptor = axios.interceptors.request.use(
+      (config) => {
+        if (token) {
+          config.headers.Authorization = `Bearer ${token}`;
+        }
+        return config;
+      },
+      (error) => Promise.reject(error)
+    );
+
+    const responseInterceptor = axios.interceptors.response.use(
+      (response) => response,
+      (error) => {
+        if (error.response?.status === 401 || error.response?.status === 403) {
+          console.error('Authentication error detected, logging out...');
+          handleLogout();
+          addAlert({
+            type: 'error',
+            message: 'Session expired. Please login again.',
+            timestamp: new Date()
+          });
+        }
+        return Promise.reject(error);
+      }
+    );
+
+    return () => {
+      axios.interceptors.request.eject(requestInterceptor);
+      axios.interceptors.response.eject(responseInterceptor);
+    };
+  }, [token, handleLogout, addAlert]);
 
   const updateBedStatus = async (bedId, newStatus) => {
     try {

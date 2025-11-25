@@ -624,87 +624,123 @@ app.post('/api/initialize', async (req, res) => {
 
       const dayOfWeek = timestamp.getDay(); // 0 = Sunday, 6 = Saturday
 
-      // Generate ward-wise data
-      const wardStats = [];
-      let totalOccupied = 0;
-      let totalAvailable = 0;
-      let totalCleaning = 0;
-      let totalReserved = 0;
+      // Generate hourly data for each day (24 hours)
+      const hourlyDataArray = [];
+      let dailyTotalOccupancy = 0;
+      let maxHourlyOccupancy = 0;
 
-      wards.forEach((wardName) => {
-        // Base occupancy with weekly cycle (varies by ward)
-        let baseOccupancy = 0.70 + (Math.sin((daysAgo / 7) * Math.PI) * 0.10);
+      for (let hour = 0; hour < 24; hour++) {
+        const hourlyWardStats = [];
+        let hourlyTotalOccupied = 0;
+        let hourlyTotalAvailable = 0;
+        let hourlyTotalCleaning = 0;
+        let hourlyTotalReserved = 0;
 
-        // Ward-specific adjustments
-        if (wardName === 'ICU') {
-          baseOccupancy += 0.10; // ICU tends to be busier
-        } else if (wardName === 'Emergency') {
-          baseOccupancy += 0.05; // Emergency also busy
-        } else if (wardName === 'General Ward') {
-          baseOccupancy -= 0.05; // General ward slightly less busy
-        }
+        wards.forEach((wardName) => {
+          // Base occupancy with weekly cycle (varies by ward)
+          let baseOccupancy = 0.70 + (Math.sin((daysAgo / 7) * Math.PI) * 0.10);
 
-        // Weekend effect (lower occupancy on weekends)
-        if (dayOfWeek === 0 || dayOfWeek === 6) {
-          baseOccupancy -= 0.08;
-        }
+          // Ward-specific adjustments
+          if (wardName === 'ICU') {
+            baseOccupancy += 0.10; // ICU tends to be busier
+          } else if (wardName === 'Emergency') {
+            baseOccupancy += 0.05; // Emergency also busy
+          } else if (wardName === 'General Ward') {
+            baseOccupancy -= 0.05; // General ward slightly less busy
+          }
 
-        // Monday spike (admissions from weekend)
-        if (dayOfWeek === 1) {
-          baseOccupancy += 0.12;
-        }
+          // Weekend effect (lower occupancy on weekends)
+          if (dayOfWeek === 0 || dayOfWeek === 6) {
+            baseOccupancy -= 0.08;
+          }
 
-        // Random events (hospital surges, seasonal patterns)
-        const randomEvent = Math.random();
-        if (randomEvent > 0.92) {
-          baseOccupancy += 0.15 + (Math.random() * 0.10);
-        } else if (randomEvent < 0.05) {
-          baseOccupancy -= 0.10 + (Math.random() * 0.08);
-        }
+          // Monday spike (admissions from weekend)
+          if (dayOfWeek === 1) {
+            baseOccupancy += 0.12;
+          }
 
-        // Add daily random variation
-        const dailyVariation = (Math.random() - 0.5) * 0.15;
+          // Hourly patterns (peak hours: 8-10 AM and 6-9 PM)
+          let hourlyModifier = 0;
+          if (hour >= 8 && hour <= 10) {
+            hourlyModifier = 0.08 + (Math.random() * 0.05); // Morning peak
+          } else if (hour >= 18 && hour <= 21) {
+            hourlyModifier = 0.12 + (Math.random() * 0.08); // Evening peak (highest)
+          } else if (hour >= 0 && hour <= 5) {
+            hourlyModifier = -0.10 - (Math.random() * 0.05); // Night lull
+          } else {
+            hourlyModifier = (Math.random() - 0.5) * 0.08; // Normal variation
+          }
 
-        // Seasonal trend
-        const monthEffect = Math.sin((daysAgo / 30) * Math.PI) * 0.05;
+          // Random events (hospital surges, seasonal patterns)
+          const randomEvent = Math.random();
+          let eventModifier = 0;
+          if (randomEvent > 0.95) {
+            eventModifier = 0.15 + (Math.random() * 0.10);
+          } else if (randomEvent < 0.05) {
+            eventModifier = -0.10 - (Math.random() * 0.08);
+          }
 
-        const occupancyRate = Math.max(0.45, Math.min(0.98, baseOccupancy + dailyVariation + monthEffect));
+          // Seasonal trend
+          const monthEffect = Math.sin((daysAgo / 30) * Math.PI) * 0.05;
 
-        const occupied = Math.floor(bedsPerWard * occupancyRate);
-        const cleaningRate = 0.03 + (Math.random() * 0.04);
-        const cleaning = Math.floor(bedsPerWard * cleaningRate);
-        const reservedRate = 0.02 + (Math.random() * 0.05);
-        const reserved = Math.floor(bedsPerWard * reservedRate);
-        const available = Math.max(0, bedsPerWard - occupied - cleaning - reserved);
+          const occupancyRate = Math.max(0.45, Math.min(0.98, baseOccupancy + hourlyModifier + eventModifier + monthEffect));
 
-        wardStats.push({
-          ward: wardName,
-          total: bedsPerWard,
-          occupied,
-          available,
-          cleaning,
-          reserved,
-          occupancyRate: parseFloat((occupancyRate * 100).toFixed(1))
+          const occupied = Math.floor(bedsPerWard * occupancyRate);
+          const cleaningRate = 0.03 + (Math.random() * 0.04);
+          const cleaning = Math.floor(bedsPerWard * cleaningRate);
+          const reservedRate = 0.02 + (Math.random() * 0.05);
+          const reserved = Math.floor(bedsPerWard * reservedRate);
+          const available = Math.max(0, bedsPerWard - occupied - cleaning - reserved);
+
+          hourlyWardStats.push({
+            ward: wardName,
+            total: bedsPerWard,
+            occupied,
+            available,
+            cleaning,
+            reserved,
+            occupancyRate: parseFloat((occupancyRate * 100).toFixed(1))
+          });
+
+          hourlyTotalOccupied += occupied;
+          hourlyTotalAvailable += available;
+          hourlyTotalCleaning += cleaning;
+          hourlyTotalReserved += reserved;
         });
 
-        totalOccupied += occupied;
-        totalAvailable += available;
-        totalCleaning += cleaning;
-        totalReserved += reserved;
-      });
+        const hourlyOccupancyRate = parseFloat(((hourlyTotalOccupied / totalBedsCount) * 100).toFixed(1));
+        dailyTotalOccupancy += hourlyOccupancyRate;
+        maxHourlyOccupancy = Math.max(maxHourlyOccupancy, hourlyOccupancyRate);
 
-      const overallOccupancyRate = parseFloat(((totalOccupied / totalBedsCount) * 100).toFixed(1));
+        hourlyDataArray.push({
+          hour,
+          totalBeds: totalBedsCount,
+          occupied: hourlyTotalOccupied,
+          available: hourlyTotalAvailable,
+          cleaning: hourlyTotalCleaning,
+          reserved: hourlyTotalReserved,
+          occupancyRate: hourlyOccupancyRate,
+          wardStats: hourlyWardStats
+        });
+      }
+
+      // Calculate daily averages from hourly data
+      const dailyAvgOccupancy = parseFloat((dailyTotalOccupancy / 24).toFixed(1));
+
+      // Use noon data for the daily summary ward stats
+      const noonData = hourlyDataArray[12];
 
       historicalData.push({
         timestamp,
         totalBeds: totalBedsCount,
-        occupied: totalOccupied,
-        available: totalAvailable,
-        cleaning: totalCleaning,
-        reserved: totalReserved,
-        occupancyRate: overallOccupancyRate,
-        wardStats,
-        peakHour: overallOccupancyRate >= 85
+        occupied: noonData.occupied,
+        available: noonData.available,
+        cleaning: noonData.cleaning,
+        reserved: noonData.reserved,
+        occupancyRate: dailyAvgOccupancy,
+        wardStats: noonData.wardStats,
+        peakHour: maxHourlyOccupancy >= 85,
+        hourlyData: hourlyDataArray
       });
     }
 
