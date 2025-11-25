@@ -68,15 +68,11 @@ function WardStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socke
       fetchData();
     });
 
-    socket.on('bed-request-approved', (request) => {
+    socket.on('bed-request-approved', () => {
       fetchData();
     });
 
-    socket.on('bed-request-expired', (request) => {
-      fetchData();
-    });
-
-    socket.on('bed-request-fulfilled', (request) => {
+    socket.on('bed-request-fulfilled', () => {
       fetchData();
     });
 
@@ -85,7 +81,6 @@ function WardStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socke
       socket.off('patient-admitted');
       socket.off('patient-discharged');
       socket.off('bed-request-approved');
-      socket.off('bed-request-expired');
       socket.off('bed-request-fulfilled');
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

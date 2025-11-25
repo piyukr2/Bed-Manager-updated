@@ -281,21 +281,25 @@ router.get('/stats', async (req, res) => {
 // Get occupancy history
 router.get('/history', async (req, res) => {
   try {
-    const { period = '24h' } = req.query;
-    
-    let hoursAgo = 24;
-    if (period === '7d') hoursAgo = 168;
-    if (period === '30d') hoursAgo = 720;
-    
-    const startTime = new Date();
-    startTime.setHours(startTime.getHours() - hoursAgo);
-    
+    const { period = 'today' } = req.query;
+
+    let startTime = new Date();
+
+    if (period === 'today') {
+      // Set to start of today (midnight)
+      startTime.setHours(0, 0, 0, 0);
+    } else if (period === '7d') {
+      startTime.setHours(startTime.getHours() - 168);
+    } else if (period === '30d') {
+      startTime.setHours(startTime.getHours() - 720);
+    }
+
     const history = await OccupancyHistory.find({
       timestamp: { $gte: startTime }
     })
     .sort({ timestamp: 1 })
     .limit(100);
-    
+
     res.json(history);
   } catch (error) {
     res.status(500).json({ error: error.message });
