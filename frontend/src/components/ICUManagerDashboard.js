@@ -89,22 +89,17 @@ function ICUManagerDashboard({
       }
     });
 
-    socket.on('bed-request-cancelled', (request) => {
+    socket.on('bed-request-cancelled', () => {
       fetchBedRequests();
     });
 
-    socket.on('bed-request-expired', (request) => {
-      fetchBedRequests();
-    });
-
-    socket.on('bed-request-fulfilled', (request) => {
+    socket.on('bed-request-fulfilled', () => {
       fetchBedRequests();
     });
 
     return () => {
       socket.off('new-bed-request');
       socket.off('bed-request-cancelled');
-      socket.off('bed-request-expired');
       socket.off('bed-request-fulfilled');
     };
   }, [socket]);
@@ -163,10 +158,8 @@ function ICUManagerDashboard({
 
   const handleApproveRequest = async (requestId, bedId) => {
     try {
-      const ttlMinutes = settings?.reservationPolicies?.defaultReservationTTL || 120;
       await axios.post(`${API_URL}/bed-requests/${requestId}/approve`, {
-        bedId,
-        reservationTTL: new Date(Date.now() + ttlMinutes * 60 * 1000)
+        bedId
       });
 
       setShowRequestModal(false);
@@ -265,10 +258,8 @@ function ICUManagerDashboard({
 
       // If user wants to reserve a bed immediately, approve the request
       if (reserveBed && selectedBedId) {
-        const ttlMinutes = settings?.reservationPolicies?.defaultReservationTTL || 120;
         await axios.post(`${API_URL}/bed-requests/${createdRequest._id}/approve`, {
-          bedId: selectedBedId,
-          reservationTTL: new Date(Date.now() + ttlMinutes * 60 * 1000)
+          bedId: selectedBedId
         });
       }
 

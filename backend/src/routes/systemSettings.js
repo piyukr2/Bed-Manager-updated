@@ -100,7 +100,6 @@ router.put('/', authorize('admin'), async (req, res) => {
     const {
       thresholds,
       reporting,
-      reservationPolicies,
       exportOptions,
       wardCapacity
     } = req.body;
@@ -125,16 +124,6 @@ router.put('/', authorize('admin'), async (req, res) => {
       }
       if (reporting.autoRefreshInterval !== undefined) {
         settings.reporting.autoRefreshInterval = reporting.autoRefreshInterval;
-      }
-    }
-
-    // Update reservation policies
-    if (reservationPolicies) {
-      if (reservationPolicies.defaultReservationTTL !== undefined) {
-        settings.reservationPolicies.defaultReservationTTL = reservationPolicies.defaultReservationTTL;
-      }
-      if (reservationPolicies.autoExpireReservations !== undefined) {
-        settings.reservationPolicies.autoExpireReservations = reservationPolicies.autoExpireReservations;
       }
     }
 

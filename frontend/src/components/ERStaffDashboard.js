@@ -104,12 +104,6 @@ function ERStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socket 
       fetchAvailabilitySummary();
     });
 
-    socket.on('bed-request-expired', (request) => {
-      fetchRequests();
-      fetchStats();
-      fetchAvailabilitySummary();
-    });
-
     socket.on('bed-updated', () => {
       fetchAvailabilitySummary();
     });
@@ -124,9 +118,8 @@ function ERStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socket 
 
     return () => {
       socket.off('bed-request-approved');
-      socket.off('bed-request-denied');
-      socket.off('bed-request-fulfilled');
-      socket.off('bed-request-expired');
+  socket.off('bed-request-denied');
+  socket.off('bed-request-fulfilled');
       socket.off('bed-updated');
       socket.off('bed-request-deleted');
     };
@@ -235,10 +228,8 @@ function ERStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socket 
 
       // If user wants to reserve a bed immediately, approve the request
       if (reserveBed && selectedBedId) {
-        const ttlMinutes = settings?.reservationPolicies?.defaultReservationTTL || 120;
         await axios.post(`${API_URL}/bed-requests/${createdRequest._id}/approve`, {
-          bedId: selectedBedId,
-          reservationTTL: new Date(Date.now() + ttlMinutes * 60 * 1000)
+          bedId: selectedBedId
         });
       }
 
@@ -284,7 +275,7 @@ function ERStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socket 
     if (!request) return;
 
     // Different actions based on status
-    const isTerminalState = ['cancelled', 'expired', 'denied', 'fulfilled'].includes(request.status);
+  const isTerminalState = ['cancelled', 'denied', 'fulfilled'].includes(request.status);
     
     if (isTerminalState) {
       // For terminal states, soft delete from database
@@ -332,10 +323,9 @@ function ERStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socket 
     const classes = {
       pending: 'status-badge-pending',
       approved: 'status-badge-approved',
-      denied: 'status-badge-denied',
-      fulfilled: 'status-badge-fulfilled',
-      cancelled: 'status-badge-cancelled',
-      expired: 'status-badge-expired'
+  denied: 'status-badge-denied',
+  fulfilled: 'status-badge-fulfilled',
+  cancelled: 'status-badge-cancelled'
     };
     return classes[status] || 'status-badge-default';
   };
@@ -500,7 +490,7 @@ function ERStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socket 
             >
               Closed
               <span className="badge">
-                {requests.filter(r => ['denied', 'cancelled', 'expired', 'fulfilled'].includes(r.status) && (selectedWard === 'All' || r.preferredWard === selectedWard)).length}
+                {requests.filter(r => ['denied', 'cancelled', 'fulfilled'].includes(r.status) && (selectedWard === 'All' || r.preferredWard === selectedWard)).length}
               </span>
             </button>
           </div>
@@ -544,7 +534,7 @@ function ERStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socket 
               <p>
                 {searchQuery ? `No requests matching "${searchQuery}"` : 
                   activeTab === 'all' ? 'Click "New Bed Request" to create your first request' : 
-                  activeTab === 'closed' ? 'No closed requests (denied, cancelled, expired, or fulfilled)' :
+                  activeTab === 'closed' ? 'No closed requests (denied, cancelled, or fulfilled)' :
                   `No ${activeTab} requests found`}
               </p>
             </div>
@@ -553,7 +543,7 @@ function ERStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socket 
               {requests
                 .filter(r => {
                   if (activeTab === 'all') return true;
-                  if (activeTab === 'closed') return ['denied', 'cancelled', 'expired', 'fulfilled'].includes(r.status);
+                  if (activeTab === 'closed') return ['denied', 'cancelled', 'fulfilled'].includes(r.status);
                   return r.status === activeTab;
                 })
                 .filter(r => selectedWard === 'All' || r.preferredWard === selectedWard)
@@ -567,7 +557,7 @@ function ERStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socket 
                   );
                 })
                 .map((request) => {
-                  const isTerminalState = ['cancelled', 'expired', 'denied', 'fulfilled'].includes(request.status);
+                  const isTerminalState = ['cancelled', 'denied', 'fulfilled'].includes(request.status);
                   return (
                 <div key={request._id} className="request-card request-card-compact">
                   {/* Close/Remove button */}

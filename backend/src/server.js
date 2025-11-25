@@ -227,10 +227,6 @@ mongoose.connect(MONGODB_URI, {
   
   await createDefaultUsers();
   await createDefaultCleaningStaff();
-
-  // Start scheduled jobs
-  const { startReservationExpiryJob } = require('./jobs/reservationExpiry');
-  startReservationExpiryJob(io);
 })
 .catch(err => {
   console.error('❌ MongoDB connection error:', err.message);

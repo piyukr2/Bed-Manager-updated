@@ -40,20 +40,6 @@ const systemSettingsSchema = new mongoose.Schema({
     }
   },
 
-  // Bed Reservation Policies
-  reservationPolicies: {
-    defaultReservationTTL: {
-      type: Number,
-      default: 120, // minutes (2 hours)
-      min: 5,
-      max: 1440 // 24 hours in minutes
-    },
-    autoExpireReservations: {
-      type: Boolean,
-      default: true
-    }
-  },
-
   // Data Export Options
   exportOptions: {
     includePHI: {

@@ -33,7 +33,7 @@ const bedRequestSchema = new mongoose.Schema({
   eta: Date, // Expected time of arrival
   status: {
     type: String,
-    enum: ['pending', 'approved', 'denied', 'fulfilled', 'cancelled', 'expired'],
+    enum: ['pending', 'approved', 'denied', 'fulfilled', 'cancelled'],
     default: 'pending',
     index: true
   },
@@ -56,7 +56,6 @@ const bedRequestSchema = new mongoose.Schema({
     min: 1,
     max: 5
   },
-  reservationTTL: Date, // Time-to-live for bed reservation
   fulfilledAt: Date,
   cancelledAt: Date,
   cancelledBy: {
