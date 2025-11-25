@@ -8,191 +8,327 @@ const EQUIPMENT_TYPES = [
   'Dialysis'
 ];
 
-function EmergencyAdmission({ onClose, onSubmit, wards }) {
-  const [formData, setFormData] = useState({
-    patientId: `PAT-${Date.now()}`,
-    name: '',
-    age: '',
-    gender: '',
-    department: 'Emergency',
-    reasonForAdmission: '',
-    estimatedStay: 24,
-    ward: 'ICU',
-    equipmentType: 'Standard'
+function EmergencyAdmission({ 
+  isOpen, 
+  onClose, 
+  onSubmit,
+  loading = false,
+  title = "🚨 Emergency Admission",
+  submitButtonText = "🚨 Submit Request",
+  showBedReservation = true,
+  availableBeds = [],
+  onFetchBeds = null,
+  getTriageLevelClass = null
+}) {
+  const [newRequest, setNewRequest] = useState({
+    patientDetails: {
+      name: '',
+      age: '',
+      gender: 'Male',
+      contactNumber: '',
+      triageLevel: 'Urgent',
+      reasonForAdmission: '',
+      requiredEquipment: 'Standard',
+      estimatedStay: 24
+    },
+    preferredWard: 'ICU',
+    eta: '',
+    notes: ''
   });
 
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({
+  const [reserveBed, setReserveBed] = useState(false);
+  const [selectedBedId, setSelectedBedId] = useState('');
+
+  const handleChange = (field, value) => {
+    setNewRequest(prev => ({
       ...prev,
-      [name]: value
+      patientDetails: {
+        ...prev.patientDetails,
+        [field]: value
+      }
     }));
   };
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    onSubmit(formData);
+    
+    const submitData = {
+      ...newRequest,
+      selectedBedId: reserveBed ? selectedBedId : undefined
+    };
+
+    onSubmit(submitData);
+    
+    // Reset form after submission
+    setNewRequest({
+      patientDetails: {
+        name: '',
+        age: '',
+        gender: 'Male',
+        contactNumber: '',
+        triageLevel: 'Urgent',
+        reasonForAdmission: '',
+        requiredEquipment: 'Standard',
+        estimatedStay: 24
+      },
+      preferredWard: 'ICU',
+      eta: '',
+      notes: ''
+    });
+    setReserveBed(false);
+    setSelectedBedId('');
   };
 
+  const handleClose = () => {
+    // Reset form when closing
+    setNewRequest({
+      patientDetails: {
+        name: '',
+        age: '',
+        gender: 'Male',
+        contactNumber: '',
+        triageLevel: 'Urgent',
+        reasonForAdmission: '',
+        requiredEquipment: 'Standard',
+        estimatedStay: 24
+      },
+      preferredWard: 'ICU',
+      eta: '',
+      notes: ''
+    });
+    setReserveBed(false);
+    setSelectedBedId('');
+    onClose();
+  };
+
+  if (!isOpen) return null;
+
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="emergency-modal" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <h2>🚨 Emergency Admission</h2>
-          <button className="close-btn" onClick={onClose}>×</button>
+    <div className="modal-overlay emergency-overlay" onClick={handleClose}>
+      <div className="modal-content emergency-modal sleek-design" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header emergency-header">
+          <div className="header-content">
+            <h2>{title}</h2>
+            <p className="header-subtitle">Fill in patient admission details</p>
+          </div>
+          <button className="modal-close" onClick={handleClose}>×</button>
         </div>
 
-        <form onSubmit={handleSubmit} className="admission-form">
-          <div className="form-group">
-            <label>Patient ID</label>
-            <input
-              type="text"
-              name="patientId"
-              value={formData.patientId}
-              onChange={handleChange}
-              readOnly
-            />
+        <form onSubmit={handleSubmit} className="request-form sleek-form">
+          {/* Patient Information Section */}
+          <div className="form-section">
+            <h3>Patient Information</h3>
+
+            <div className="form-row">
+              <div className="form-group">
+                <label>Patient Name *</label>
+                <input
+                  type="text"
+                  required
+                  value={newRequest.patientDetails.name}
+                  onChange={(e) => handleChange('name', e.target.value)}
+                  placeholder="Enter patient name"
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Age *</label>
+                <input
+                  type="number"
+                  required
+                  min="0"
+                  max="150"
+                  value={newRequest.patientDetails.age}
+                  onChange={(e) => handleChange('age', e.target.value)}
+                  placeholder="Age"
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Gender *</label>
+                <select
+                  required
+                  value={newRequest.patientDetails.gender}
+                  onChange={(e) => handleChange('gender', e.target.value)}
+                >
+                  <option value="Male">Male</option>
+                  <option value="Female">Female</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="form-group">
+              <label>Contact Number</label>
+              <input
+                type="tel"
+                value={newRequest.patientDetails.contactNumber}
+                onChange={(e) => handleChange('contactNumber', e.target.value)}
+                placeholder="Contact number"
+              />
+            </div>
           </div>
 
-          <div className="form-row">
+          {/* Medical Details Section */}
+          <div className="form-section">
+            <h3>Medical Details</h3>
+
+            <div className="form-row">
+              <div className="form-group">
+                <label>Triage Level *</label>
+                <select
+                  required
+                  value={newRequest.patientDetails.triageLevel}
+                  onChange={(e) => handleChange('triageLevel', e.target.value)}
+                  className={getTriageLevelClass ? `triage-select ${getTriageLevelClass(newRequest.patientDetails.triageLevel)}` : 'triage-select'}
+                >
+                  <option value="Urgent">Urgent</option>
+                  <option value="Not Urgent">Not Urgent</option>
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label>Required Equipment *</label>
+                <select
+                  required
+                  value={newRequest.patientDetails.requiredEquipment}
+                  onChange={(e) => handleChange('requiredEquipment', e.target.value)}
+                >
+                  {EQUIPMENT_TYPES.map(equipment => (
+                    <option key={equipment} value={equipment}>
+                      {equipment}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
             <div className="form-group">
-              <label>Patient Name *</label>
-              <input
-                type="text"
-                name="name"
-                value={formData.name}
-                onChange={handleChange}
+              <label>Reason for Admission *</label>
+              <textarea
                 required
-                placeholder="Enter patient name"
+                rows="3"
+                value={newRequest.patientDetails.reasonForAdmission}
+                onChange={(e) => handleChange('reasonForAdmission', e.target.value)}
+                placeholder="Describe the reason for admission"
+              />
+            </div>
+
+            <div className="form-row">
+              <div className="form-group">
+                <label>Estimated Stay (hours)</label>
+                <input
+                  type="number"
+                  min="1"
+                  value={newRequest.patientDetails.estimatedStay}
+                  onChange={(e) => handleChange('estimatedStay', parseInt(e.target.value))}
+                  placeholder="24"
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Preferred Ward</label>
+                <select
+                  value={newRequest.preferredWard}
+                  onChange={(e) => {
+                    const ward = e.target.value;
+                    setNewRequest({ ...newRequest, preferredWard: ward });
+                    if (reserveBed && onFetchBeds) {
+                      onFetchBeds(ward);
+                    }
+                  }}
+                >
+                  <option value="">Any Available</option>
+                  <option value="ICU">ICU</option>
+                  <option value="Emergency">Emergency</option>
+                  <option value="Cardiology">Cardiology</option>
+                  <option value="General Ward">General Ward</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Bed Reservation Option
+            {showBedReservation && (
+              <>
+                <div className="form-group">
+                  <label className="checkbox-label">
+                    <input
+                      type="checkbox"
+                      checked={reserveBed}
+                      onChange={(e) => {
+                        setReserveBed(e.target.checked);
+                        if (e.target.checked && onFetchBeds) {
+                          onFetchBeds(newRequest.preferredWard);
+                        } else {
+                          setSelectedBedId('');
+                        }
+                      }}
+                    />
+                    <span>Reserve a bed immediately (optional)</span>
+                  </label>
+                </div>
+
+                {reserveBed && (
+                  <div className="form-group">
+                    <label>Select Bed to Reserve</label>
+                    <select
+                      value={selectedBedId}
+                      onChange={(e) => setSelectedBedId(e.target.value)}
+                      required={reserveBed}
+                    >
+                      <option value="">-- Select a bed --</option>
+                      {availableBeds.map((bed) => (
+                        <option key={bed._id} value={bed._id}>
+                          {bed.bedNumber} - {bed.ward} (Floor {bed.location.floor}, {bed.equipmentType})
+                        </option>
+                      ))}
+                    </select>
+                    {availableBeds.length === 0 && (
+                      <small className="form-help-text">
+                        No available beds in {newRequest.preferredWard || 'selected ward'}
+                      </small>
+                    )}
+                  </div>
+                )}
+              </>
+            )} */}
+
+            <div className="form-group">
+              <label>Expected Time of Arrival</label>
+              <input
+                type="datetime-local"
+                value={newRequest.eta}
+                onChange={(e) => setNewRequest({ ...newRequest, eta: e.target.value })}
               />
             </div>
 
             <div className="form-group">
-              <label>Age *</label>
-              <input
-                type="number"
-                name="age"
-                value={formData.age}
-                onChange={handleChange}
-                required
-                min="0"
-                max="120"
-                placeholder="Age"
+              <label>Additional Notes</label>
+              <textarea
+                rows="2"
+                value={newRequest.notes}
+                onChange={(e) => setNewRequest({ ...newRequest, notes: e.target.value })}
+                placeholder="Any additional information"
               />
             </div>
           </div>
 
-          <div className="form-row">
-            <div className="form-group">
-              <label>Gender *</label>
-              <select
-                name="gender"
-                value={formData.gender}
-                onChange={handleChange}
-                required
-              >
-                <option value="">Select gender</option>
-                <option value="Male">Male</option>
-                <option value="Female">Female</option>
-                <option value="Other">Other</option>
-              </select>
-            </div>
-
-            <div className="form-group">
-              <label>Department</label>
-              <select
-                name="department"
-                value={formData.department}
-                onChange={handleChange}
-              >
-                <option value="Emergency">Emergency</option>
-                <option value="Cardiology">Cardiology</option>
-                <option value="Neurology">Neurology</option>
-                <option value="Orthopedics">Orthopedics</option>
-                <option value="General">General</option>
-                <option value="Critical Care">Critical Care</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="form-row">
-            <div className="form-group">
-              <label>Preferred Ward *</label>
-              <select
-                name="ward"
-                value={formData.ward}
-                onChange={handleChange}
-                required
-              >
-                <option value="">Select ward</option>
-                {wards.map(ward => (
-                  <option key={ward} value={ward}>{ward}</option>
-                ))}
-              </select>
-            </div>
-
-            <div className="form-group">
-              <label>Required Equipment *</label>
-              <select
-                name="equipmentType"
-                value={formData.equipmentType}
-                onChange={handleChange}
-                required
-              >
-                {EQUIPMENT_TYPES.map(equipment => (
-                  <option key={equipment} value={equipment}>
-                    {equipment}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <div className="form-group">
-            <label>Reason for Admission *</label>
-            <textarea
-              name="reasonForAdmission"
-              value={formData.reasonForAdmission}
-              onChange={handleChange}
-              required
-              rows="3"
-              placeholder="Enter reason for admission (e.g., Respiratory distress, Cardiac arrest, Trauma, etc.)"
-            />
-          </div>
-
-          <div className="form-group">
-            <label>Estimated Stay (hours)</label>
-            <input
-              type="number"
-              name="estimatedStay"
-              value={formData.estimatedStay}
-              onChange={handleChange}
-              min="1"
-              placeholder="24"
-            />
-            <small className="form-hint">
-              Expected duration of hospital stay in hours
-            </small>
-          </div>
-
-          <div className="admission-info">
-            <p className="info-text">
-              ℹ️ The system will automatically find the best available bed based on:
-            </p>
-            <ul className="info-list">
-              <li>1. Preferred ward + Required equipment (Perfect match)</li>
-              <li>2. Required equipment in any ward (Equipment priority)</li>
-              <li>3. Preferred ward with any equipment (Ward priority)</li>
-              <li>4. Any available bed (Last resort)</li>
-            </ul>
-          </div>
-
-          <div className="form-actions">
-            <button type="button" onClick={onClose} className="btn-cancel">
+          {/* Form Actions */}
+          <div className="modal-actions">
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={handleClose}
+              disabled={loading}
+            >
               Cancel
             </button>
-            <button type="submit" className="btn-submit">
-              🚨 Admit Patient
+            <button
+              type="submit"
+              className="btn-primary"
+              disabled={loading}
+            >
+              {loading ? 'Processing...' : submitButtonText}
             </button>
           </div>
         </form>
