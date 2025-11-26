@@ -10,7 +10,7 @@ const ALERT_LABELS = {
 
 const ALERTS_PER_PAGE = 10;
 
-function AlertPanel({ alerts }) {
+function AlertPanel({ alerts = [] }) {
   const [displayedCount, setDisplayedCount] = useState(ALERTS_PER_PAGE);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -21,15 +21,22 @@ function AlertPanel({ alerts }) {
     }
   }, [alerts.length, displayedCount]);
 
-  const displayedAlerts = alerts.slice(0, displayedCount);
-  const hasMore = displayedCount < alerts.length;
-  const remainingCount = alerts.length - displayedCount;
+  // Sort alerts by timestamp (most recent first) to ensure proper order
+  const sortedAlerts = [...alerts].sort((a, b) => {
+    const dateA = new Date(a.timestamp || a.createdAt);
+    const dateB = new Date(b.timestamp || b.createdAt);
+    return dateB - dateA; // Most recent first
+  });
+
+  const displayedAlerts = sortedAlerts.slice(0, displayedCount);
+  const hasMore = displayedCount < sortedAlerts.length;
+  const remainingCount = sortedAlerts.length - displayedCount;
 
   const handleLoadMore = () => {
     setIsLoading(true);
     // Simulate a small delay for smooth UX
     setTimeout(() => {
-      setDisplayedCount(prev => Math.min(prev + ALERTS_PER_PAGE, alerts.length));
+      setDisplayedCount(prev => Math.min(prev + ALERTS_PER_PAGE, sortedAlerts.length));
       setIsLoading(false);
     }, 300);
   };
@@ -48,13 +55,10 @@ function AlertPanel({ alerts }) {
       <div className="panel-header">
         <div>
           <h3>Alerts & Notifications</h3>
-          <span className="panel-subtext">
-            {alerts.length} Active Alert{alerts.length === 1 ? '' : 's'}
-          </span>
         </div>
       </div>
       <div className="alerts-container">
-        {alerts.length === 0 ? (
+        {sortedAlerts.length === 0 ? (
           <div className="no-alerts">
             <p>No active alerts</p>
             <span>All monitored systems are within established thresholds.</span>
@@ -77,41 +81,41 @@ function AlertPanel({ alerts }) {
                 )}
               </div>
             ))}
-
-            {/* Load More / Show Less Buttons */}
-            {(hasMore || displayedCount > ALERTS_PER_PAGE) && (
-              <div className="alerts-pagination">
-                {hasMore && (
-                  <button 
-                    className="load-more-btn" 
-                    onClick={handleLoadMore}
-                    disabled={isLoading}
-                  >
-                    {isLoading ? (
-                      <>
-                        <span className="spinner-small"></span>
-                        Loading...
-                      </>
-                    ) : (
-                      <>
-                        Load More ({remainingCount} more alert{remainingCount === 1 ? '' : 's'})
-                      </>
-                    )}
-                  </button>
-                )}
-                {displayedCount > ALERTS_PER_PAGE && (
-                  <button 
-                    className="show-less-btn" 
-                    onClick={handleShowLess}
-                  >
-                    Show Less
-                  </button>
-                )}
-              </div>
-            )}
           </>
         )}
       </div>
+
+      {/* Load More / Show Less Buttons - Outside scrollable container */}
+      {sortedAlerts.length > 0 && (hasMore || displayedCount > ALERTS_PER_PAGE) && (
+        <div className="alerts-pagination">
+          {hasMore && (
+            <button 
+              className="load-more-btn" 
+              onClick={handleLoadMore}
+              disabled={isLoading}
+            >
+              {isLoading ? (
+                <>
+                  <span className="spinner-small"></span>
+                  Loading...
+                </>
+              ) : (
+                <>
+                  Load more ({remainingCount} more alert{remainingCount === 1 ? '' : 's'})
+                </>
+              )}
+            </button>
+          )}
+          {displayedCount > ALERTS_PER_PAGE && (
+            <button 
+              className="show-less-btn" 
+              onClick={handleShowLess}
+            >
+              Show Less
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

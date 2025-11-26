@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import Dashboard from './Dashboard';
-import OccupancyChart from './OccupancyChart';
 import AlertPanel from './AlertPanel';
+import ResizableCard from './ResizableCard';
 // import BedGrid from './BedGrid';
 import WardView from './WardView';
 // import FloorPlan from './FloorPlan';
+import EmergencyAdmission from './EmergencyAdmission';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
@@ -39,13 +40,16 @@ function ICUManagerDashboard({
   const [availableBeds, setAvailableBeds] = useState([]);
   const [reserveBed, setReserveBed] = useState(false);
   const [selectedBedId, setSelectedBedId] = useState('');
+  const [showDenyModal, setShowDenyModal] = useState(false);
+  const [denyReason, setDenyReason] = useState('');
+  const [requestToDeny, setRequestToDeny] = useState(null);
   const [newRequest, setNewRequest] = useState({
     patientDetails: {
       name: '',
       age: '',
       gender: 'Male',
       contactNumber: '',
-      triageLevel: 'Critical',
+      triageLevel: 'Urgent',
       reasonForAdmission: '',
       requiredEquipment: 'ICU Monitor',
       estimatedStay: 24
@@ -55,6 +59,22 @@ function ICUManagerDashboard({
     notes: ''
   });
   const [settings, setSettings] = useState(null);
+
+  // Clear all resizable card dimensions on component mount (page refresh)
+  useEffect(() => {
+    const resizableKeys = [
+      'icu-alerts-width',
+      'icu-ward-filter-dimensions',
+      'icu-stats-dimensions',
+      'icu-capacity-graph-dimensions',
+      'icu-beds-view-dimensions',
+      'icu-requests-container-dimensions'
+    ];
+    
+    resizableKeys.forEach(key => {
+      localStorage.removeItem(key);
+    });
+  }, []);
 
   // Set default ward to 'All' on mount to show all 60 beds
   useEffect(() => {
@@ -131,7 +151,7 @@ function ICUManagerDashboard({
       const response = await axios.post(`${API_URL}/beds/recommend`, {
         ward: request.preferredWard,
         equipmentType: request.patientDetails.requiredEquipment,
-        urgency: request.patientDetails.triageLevel === 'Critical' ? 'high' : 'normal'
+        urgency: request.patientDetails.triageLevel === 'Urgent' ? 'high' : 'normal'
       });
 
       if (response.data.bed) {
@@ -171,17 +191,28 @@ function ICUManagerDashboard({
     }
   };
 
-  const handleDenyRequest = async (requestId, reason) => {
-    const denialReason = reason || prompt('Enter denial reason:');
-    if (!denialReason) return;
+  const handleDenyRequest = (requestId) => {
+    setRequestToDeny(requestId);
+    setShowDenyModal(true);
+    setDenyReason('');
+  };
+
+  const confirmDenyRequest = async () => {
+    if (!denyReason.trim()) {
+      alert('Please enter a reason for denial');
+      return;
+    }
 
     try {
-      await axios.post(`${API_URL}/bed-requests/${requestId}/deny`, {
-        reason: denialReason
+      await axios.post(`${API_URL}/bed-requests/${requestToDeny}/deny`, {
+        reason: denyReason
       });
 
+      setShowDenyModal(false);
       setShowRequestModal(false);
       setSelectedRequest(null);
+      setRequestToDeny(null);
+      setDenyReason('');
       fetchBedRequests();
     } catch (error) {
       console.error('Error denying request:', error);
@@ -270,7 +301,7 @@ function ICUManagerDashboard({
           age: '',
           gender: 'Male',
           contactNumber: '',
-          triageLevel: 'Critical',
+          triageLevel: 'Urgent',
           reasonForAdmission: '',
           requiredEquipment: 'ICU Monitor',
           estimatedStay: 24
@@ -299,10 +330,8 @@ function ICUManagerDashboard({
 
   const getTriageLevelClass = (level) => {
     const classes = {
-      Critical: 'triage-critical',
       Urgent: 'triage-urgent',
-      'Semi-Urgent': 'triage-semi-urgent',
-      'Non-Urgent': 'triage-non-urgent'
+      'Not Urgent': 'triage-non-urgent'
     };
     return classes[level] || '';
   };
@@ -370,15 +399,30 @@ function ICUManagerDashboard({
         {activeTab === 'overview' ? (
           <>
             <div className="bed-manager-layout">
-              {/* Left Side - Alerts and Notifications */}
-              <div className="bed-manager-sidebar">
+              {/* Left Side - Alerts and Notifications - Resizable */}
+              <ResizableCard
+                minWidth={250}
+                maxWidth={800}
+                minHeight={400}
+                enableWidth={true}
+                enableHeight={true}
+                storageKey="icu-alerts-width"
+                className="bed-manager-sidebar"
+              >
                 <AlertPanel alerts={alerts} />
-              </div>
+              </ResizableCard>
 
               {/* Right Side - Main Content */}
               <div className="bed-manager-main">
-                {/* Ward Filter Section */}
-                <div className="ward-filter-section-horizontal">
+                {/* Ward Filter Section - Resizable */}
+                <ResizableCard
+                  minWidth={400}
+                  minHeight={80}
+                  enableWidth={true}
+                  enableHeight={true}
+                  storageKey="icu-ward-filter-dimensions"
+                  className="ward-filter-section-horizontal"
+                >
                   <label className="ward-filter-label">Filter by Ward:</label>
                   <div className="ward-buttons-horizontal">
                     {wards.map((ward) => (
@@ -391,78 +435,222 @@ function ICUManagerDashboard({
                       </button>
                     ))}
                   </div>
-                </div>
+                </ResizableCard>
 
-                {/* Stats Section - Below Ward Filter */}
+                {/* Stats Section - Below Ward Filter - Resizable */}
                 {filteredStats && (
-                  <div className="stats-section-below-filter">
+                  <ResizableCard
+                    minWidth={400}
+                    minHeight={150}
+                    enableWidth={true}
+                    enableHeight={true}
+                    storageKey="icu-stats-dimensions"
+                    className="stats-section-below-filter"
+                  >
                     <Dashboard stats={filteredStats} />
-                  </div>
+                  </ResizableCard>
                 )}
 
-                {/* Bed Capacity Graph */}
+                {/* Bed Capacity Graph - Resizable */}
                 {filteredStats && (
-                  <div className="bed-capacity-graph-section">
-                    <h3>Hospital Bed Capacity Overview (All 60 Beds)</h3>
-                    <ResponsiveContainer width="100%" height={300}>
-                      <BarChart
-                        data={[
-                          { name: 'Emergency', total: 15, occupied: stats.wardStats?.find(w => w._id === 'Emergency')?.occupied || 0, available: stats.wardStats?.find(w => w._id === 'Emergency')?.available || 0 },
-                          { name: 'ICU', total: 15, occupied: stats.wardStats?.find(w => w._id === 'ICU')?.occupied || 0, available: stats.wardStats?.find(w => w._id === 'ICU')?.available || 0 },
-                          { name: 'General Ward', total: 15, occupied: stats.wardStats?.find(w => w._id === 'General Ward')?.occupied || 0, available: stats.wardStats?.find(w => w._id === 'General Ward')?.available || 0 },
-                          { name: 'Cardiology', total: 15, occupied: stats.wardStats?.find(w => w._id === 'Cardiology')?.occupied || 0, available: stats.wardStats?.find(w => w._id === 'Cardiology')?.available || 0 }
-                        ]}
-                        margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
-                      >
-                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(148, 163, 184, 0.15)" />
-                        <XAxis
-                          dataKey="name"
-                          stroke="var(--text-quiet)"
-                          tick={{ fill: 'var(--text-primary)', fontSize: 12 }}
-                        />
-                        <YAxis
-                          stroke="var(--text-quiet)"
-                          tick={{ fill: 'var(--text-quiet)', fontSize: 12 }}
-                          label={{ value: 'Number of Beds', angle: -90, position: 'insideLeft' }}
-                        />
-                        <Tooltip
-                          contentStyle={{
-                            backgroundColor: 'var(--surface-card)',
-                            border: '1px solid var(--border-soft)',
-                            borderRadius: '10px',
-                            color: 'var(--text-primary)',
-                            padding: '8px 12px'
-                          }}
-                        />
-                        <Bar dataKey="occupied" stackId="a" fill="#ef4444" name="Occupied" />
-                        <Bar dataKey="available" stackId="a" fill="#10b981" name="Available" />
-                      </BarChart>
-                    </ResponsiveContainer>
-                    <div className="capacity-legend">
-                      <div className="legend-item">
-                        <span className="legend-color" style={{backgroundColor: '#ef4444'}}></span>
-                        <span>Occupied</span>
+                  <ResizableCard
+                    minWidth={400}
+                    minHeight={250}
+                    enableWidth={true}
+                    enableHeight={true}
+                    storageKey="icu-capacity-graph-dimensions"
+                    className="bed-capacity-graph-section"
+                  >
+                    <div className="graph-header">
+                      <div>
+                        <h3>Hospital Bed Capacity Overview</h3>
+                        <p className="graph-subtitle">Real-time ward occupancy across all departments</p>
                       </div>
-                      <div className="legend-item">
-                        <span className="legend-color" style={{backgroundColor: '#10b981'}}></span>
-                        <span>Available</span>
-                      </div>
-                      <div className="legend-item">
-                        <span className="legend-info">Total Hospital Capacity: 60 Beds (15 per ward)</span>
+                      <div className="capacity-legend-inline">
+                        <div className="legend-item">
+                          <span className="legend-dot occupied"></span>
+                          <span>Occupied</span>
+                        </div>
+                        <div className="legend-item">
+                          <span className="legend-dot available"></span>
+                          <span>Available</span>
+                        </div>
+                        <div className="legend-item capacity-total">
+                          <span className="capacity-icon">🏥</span>
+                          <span>{stats.totalBeds} Total Beds</span>
+                        </div>
                       </div>
                     </div>
-                  </div>
+                    <ResponsiveContainer width="100%" height={350}>
+                      <BarChart
+                        data={(() => {
+                          const wardNames = ['Emergency', 'ICU', 'General Ward', 'Cardiology'];
+                          return wardNames.map(wardName => {
+                            const wardData = stats.wardStats?.find(w => w._id === wardName);
+                            const occupied = wardData?.occupied || 0;
+                            const available = wardData?.available || 0;
+                            const cleaning = wardData?.cleaning || 0;
+                            const reserved = wardData?.reserved || 0;
+                            const total = occupied + available + cleaning + reserved;
+                            const occupancyRate = total > 0 ? ((occupied / total) * 100).toFixed(0) : 0;
+                            
+                            return {
+                              name: wardName,
+                              total,
+                              occupied,
+                              available,
+                              cleaning,
+                              reserved,
+                              occupancyRate
+                            };
+                          });
+                        })()}
+                        margin={{ top: 30, right: 40, left: 20, bottom: 30 }}
+                        barGap={8}
+                        barCategoryGap="25%"
+                      >
+                        <defs>
+                          <linearGradient id="occupiedGradient" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#ef4444" stopOpacity={0.9}/>
+                            <stop offset="100%" stopColor="#dc2626" stopOpacity={1}/>
+                          </linearGradient>
+                          <linearGradient id="availableGradient" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#10b981" stopOpacity={0.9}/>
+                            <stop offset="100%" stopColor="#059669" stopOpacity={1}/>
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid 
+                          strokeDasharray="3 3" 
+                          stroke="var(--border-soft)" 
+                          vertical={false}
+                          opacity={0.5}
+                        />
+                        <XAxis
+                          dataKey="name"
+                          axisLine={{ stroke: 'var(--border-soft)', strokeWidth: 1 }}
+                          tickLine={false}
+                          tick={{ 
+                            fill: 'var(--text-primary)', 
+                            fontSize: 13,
+                            fontWeight: 500
+                          }}
+                          dy={10}
+                        />
+                        <YAxis
+                          axisLine={false}
+                          tickLine={false}
+                          tick={{ 
+                            fill: 'var(--text-quiet)', 
+                            fontSize: 12
+                          }}
+                          label={{ 
+                            value: 'Number of Beds', 
+                            angle: -90, 
+                            position: 'insideLeft',
+                            style: { 
+                              fill: 'var(--text-quiet)',
+                              fontSize: 13,
+                              fontWeight: 500
+                            }
+                          }}
+                          domain={[0, 15]}
+                        />
+                        <Tooltip
+                          cursor={{ fill: 'rgba(148, 163, 184, 0.1)', radius: 8 }}
+                          content={({ active, payload }) => {
+                            if (active && payload && payload.length) {
+                              const data = payload[0].payload;
+                              return (
+                                <div className="custom-tooltip">
+                                  <div className="tooltip-header">{data.name}</div>
+                                  <div className="tooltip-body">
+                                    <div className="tooltip-row">
+                                      <span className="tooltip-label">
+                                        <span className="tooltip-dot occupied"></span>
+                                        Occupied:
+                                      </span>
+                                      <span className="tooltip-value">{data.occupied} beds</span>
+                                    </div>
+                                    <div className="tooltip-row">
+                                      <span className="tooltip-label">
+                                        <span className="tooltip-dot available"></span>
+                                        Available:
+                                      </span>
+                                      <span className="tooltip-value">{data.available} beds</span>
+                                    </div>
+                                    {data.cleaning > 0 && (
+                                      <div className="tooltip-row">
+                                        <span className="tooltip-label">
+                                          <span className="tooltip-dot cleaning"></span>
+                                          Cleaning:
+                                        </span>
+                                        <span className="tooltip-value">{data.cleaning} beds</span>
+                                      </div>
+                                    )}
+                                    {data.reserved > 0 && (
+                                      <div className="tooltip-row">
+                                        <span className="tooltip-label">
+                                          <span className="tooltip-dot reserved"></span>
+                                          Reserved:
+                                        </span>
+                                        <span className="tooltip-value">{data.reserved} beds</span>
+                                      </div>
+                                    )}
+                                    <div className="tooltip-divider"></div>
+                                    <div className="tooltip-row">
+                                      <span className="tooltip-label">Total Capacity:</span>
+                                      <span className="tooltip-value">{data.total} beds</span>
+                                    </div>
+                                    <div className="tooltip-row">
+                                      <span className="tooltip-label">Occupancy Rate:</span>
+                                      <span className="tooltip-value occupancy-rate">{data.occupancyRate}%</span>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            }
+                            return null;
+                          }}
+                        />
+                        <Bar 
+                          dataKey="occupied" 
+                          stackId="a" 
+                          fill="url(#occupiedGradient)" 
+                          name="Occupied"
+                          radius={[0, 0, 0, 0]}
+                          animationDuration={800}
+                          animationBegin={0}
+                        />
+                        <Bar 
+                          dataKey="available" 
+                          stackId="a" 
+                          fill="url(#availableGradient)" 
+                          name="Available"
+                          radius={[8, 8, 0, 0]}
+                          animationDuration={800}
+                          animationBegin={200}
+                        />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </ResizableCard>
                 )}
 
-                {/* Current Occupancy and Bed Distribution - Below Stats */}
+                {/* Current Occupancy and Bed Distribution - Below Stats
                 {filteredStats && (
                   <div className="occupancy-chart-section-below-filter">
                     <OccupancyChart stats={filteredStats} />
                   </div>
-                )}
+                )} */}
 
-                {/* Main Dashboard - Bed Views - All beds displayed */}
-                <main className="dashboard-main-beds">
+                {/* Main Dashboard - Bed Views - All beds displayed - Resizable */}
+                <ResizableCard
+                  minWidth={400}
+                  minHeight={300}
+                  enableWidth={true}
+                  enableHeight={true}
+                  storageKey="icu-beds-view-dimensions"
+                  className="dashboard-main-beds"
+                >
                   <div className="beds-section-header">
                     <h2>All Hospital Beds {selectedWard !== 'All' && `- ${selectedWard}`}</h2>
                     <p className="beds-count">{filteredBeds.length} beds</p>
@@ -472,13 +660,20 @@ function ICUManagerDashboard({
                     onUpdateBed={onUpdateBed}
                     canUpdateBeds={true}
                   />
-                </main>
+                </ResizableCard>
               </div>
             </div>
           </>
         ) : (
           /* Bed Requests Tab */
-          <div className="requests-container">
+          <ResizableCard
+            minWidth={600}
+            minHeight={400}
+            enableWidth={true}
+            enableHeight={true}
+            storageKey="icu-requests-container-dimensions"
+            className="requests-container"
+          >
             <div className="requests-header">
               <h2>Pending Bed Requests</h2>
               <p>Review and assign beds to incoming patient requests from ER</p>
@@ -578,258 +773,24 @@ function ICUManagerDashboard({
                 ))}
               </div>
             )}
-          </div>
+          </ResizableCard>
         )}
       </div>
 
       {/* Emergency Admission Modal - Same as ER Staff Dashboard */}
       {showEmergencyModal && (
-        <div className="modal-overlay" onClick={() => setShowEmergencyModal(false)}>
-          <div className="modal-content emergency-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2>🚨 Emergency Admission</h2>
-              <button className="modal-close" onClick={() => setShowEmergencyModal(false)}>×</button>
-            </div>
-
-            <form onSubmit={handleCreateEmergencyAdmission} className="request-form">
-              <div className="form-section">
-                <h3>Patient Information</h3>
-
-                <div className="form-row">
-                  <div className="form-group">
-                    <label>Patient Name *</label>
-                    <input
-                      type="text"
-                      required
-                      value={newRequest.patientDetails.name}
-                      onChange={(e) => setNewRequest({
-                        ...newRequest,
-                        patientDetails: { ...newRequest.patientDetails, name: e.target.value }
-                      })}
-                      placeholder="Enter patient name"
-                    />
-                  </div>
-
-                  <div className="form-group">
-                    <label>Age *</label>
-                    <input
-                      type="number"
-                      required
-                      min="0"
-                      max="150"
-                      value={newRequest.patientDetails.age}
-                      onChange={(e) => setNewRequest({
-                        ...newRequest,
-                        patientDetails: { ...newRequest.patientDetails, age: e.target.value }
-                      })}
-                      placeholder="Age"
-                    />
-                  </div>
-
-                  <div className="form-group">
-                    <label>Gender *</label>
-                    <select
-                      required
-                      value={newRequest.patientDetails.gender}
-                      onChange={(e) => setNewRequest({
-                        ...newRequest,
-                        patientDetails: { ...newRequest.patientDetails, gender: e.target.value }
-                      })}
-                    >
-                      <option value="Male">Male</option>
-                      <option value="Female">Female</option>
-                      <option value="Other">Other</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="form-group">
-                  <label>Contact Number</label>
-                  <input
-                    type="tel"
-                    value={newRequest.patientDetails.contactNumber}
-                    onChange={(e) => setNewRequest({
-                      ...newRequest,
-                      patientDetails: { ...newRequest.patientDetails, contactNumber: e.target.value }
-                    })}
-                    placeholder="Contact number"
-                  />
-                </div>
-              </div>
-
-              <div className="form-section">
-                <h3>Medical Details</h3>
-
-                <div className="form-row">
-                  <div className="form-group">
-                    <label>Triage Level *</label>
-                    <select
-                      required
-                      value={newRequest.patientDetails.triageLevel}
-                      onChange={(e) => setNewRequest({
-                        ...newRequest,
-                        patientDetails: { ...newRequest.patientDetails, triageLevel: e.target.value }
-                      })}
-                      className={`triage-select ${getTriageLevelClass(newRequest.patientDetails.triageLevel)}`}
-                    >
-                      <option value="Critical">Critical</option>
-                      <option value="Urgent">Urgent</option>
-                      <option value="Semi-Urgent">Semi-Urgent</option>
-                      <option value="Non-Urgent">Non-Urgent</option>
-                    </select>
-                  </div>
-
-                  <div className="form-group">
-                    <label>Required Equipment *</label>
-                    <select
-                      required
-                      value={newRequest.patientDetails.requiredEquipment}
-                      onChange={(e) => setNewRequest({
-                        ...newRequest,
-                        patientDetails: { ...newRequest.patientDetails, requiredEquipment: e.target.value }
-                      })}
-                    >
-                      <option value="Standard">Standard</option>
-                      <option value="Ventilator">Ventilator</option>
-                      <option value="ICU Monitor">ICU Monitor</option>
-                      <option value="Cardiac Monitor">Cardiac Monitor</option>
-                      <option value="Dialysis">Dialysis</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="form-group">
-                  <label>Reason for Admission *</label>
-                  <textarea
-                    required
-                    rows="3"
-                    value={newRequest.patientDetails.reasonForAdmission}
-                    onChange={(e) => setNewRequest({
-                      ...newRequest,
-                      patientDetails: { ...newRequest.patientDetails, reasonForAdmission: e.target.value }
-                    })}
-                    placeholder="Describe the reason for admission"
-                  />
-                </div>
-
-                <div className="form-row">
-                  <div className="form-group">
-                    <label>Estimated Stay (hours)</label>
-                    <input
-                      type="number"
-                      min="1"
-                      value={newRequest.patientDetails.estimatedStay}
-                      onChange={(e) => setNewRequest({
-                        ...newRequest,
-                        patientDetails: { ...newRequest.patientDetails, estimatedStay: parseInt(e.target.value) }
-                      })}
-                    />
-                  </div>
-
-                  <div className="form-group">
-                    <label>Preferred Ward</label>
-                    <select
-                      value={newRequest.preferredWard}
-                      onChange={(e) => {
-                        const ward = e.target.value;
-                        setNewRequest({ ...newRequest, preferredWard: ward });
-                        if (reserveBed) {
-                          fetchAvailableBeds(ward);
-                        }
-                      }}
-                    >
-                      <option value="">Any Available</option>
-                      <option value="ICU">ICU</option>
-                      <option value="Emergency">Emergency</option>
-                      <option value="Cardiology">Cardiology</option>
-                      <option value="General Ward">General Ward</option>
-                    </select>
-                  </div>
-                </div>
-
-                {/* Bed Reservation Option */}
-                <div className="form-group">
-                  <label className="checkbox-label">
-                    <input
-                      type="checkbox"
-                      checked={reserveBed}
-                      onChange={(e) => {
-                        setReserveBed(e.target.checked);
-                        if (e.target.checked) {
-                          fetchAvailableBeds(newRequest.preferredWard);
-                        } else {
-                          setAvailableBeds([]);
-                          setSelectedBedId('');
-                        }
-                      }}
-                    />
-                    <span>Reserve a bed immediately (optional)</span>
-                  </label>
-                </div>
-
-                {reserveBed && (
-                  <div className="form-group">
-                    <label>Select Bed to Reserve</label>
-                    <select
-                      value={selectedBedId}
-                      onChange={(e) => setSelectedBedId(e.target.value)}
-                      required={reserveBed}
-                    >
-                      <option value="">-- Select a bed --</option>
-                      {availableBeds.map((bed) => (
-                        <option key={bed._id} value={bed._id}>
-                          {bed.bedNumber} - {bed.ward} (Floor {bed.location.floor}, {bed.equipmentType})
-                        </option>
-                      ))}
-                    </select>
-                    {availableBeds.length === 0 && (
-                      <small className="form-help-text">
-                        No available beds in {newRequest.preferredWard || 'selected ward'}
-                      </small>
-                    )}
-                  </div>
-                )}
-
-                <div className="form-group">
-                  <label>Expected Time of Arrival</label>
-                  <input
-                    type="datetime-local"
-                    value={newRequest.eta}
-                    onChange={(e) => setNewRequest({ ...newRequest, eta: e.target.value })}
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label>Additional Notes</label>
-                  <textarea
-                    rows="2"
-                    value={newRequest.notes}
-                    onChange={(e) => setNewRequest({ ...newRequest, notes: e.target.value })}
-                    placeholder="Any additional information"
-                  />
-                </div>
-              </div>
-
-              <div className="modal-actions">
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  onClick={() => setShowEmergencyModal(false)}
-                  disabled={loading}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="btn-primary"
-                  disabled={loading}
-                >
-                  {loading ? 'Creating...' : '🚨 Create Emergency Admission'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+        <EmergencyAdmission
+          isOpen={showEmergencyModal}
+          onClose={() => setShowEmergencyModal(false)}
+          onSubmit={handleCreateEmergencyAdmission}
+          loading={loading}
+          title="🚨 Emergency Admission"
+          submitButtonText="🚨 Create Emergency Admission"
+          showBedReservation={true}
+          availableBeds={availableBeds}
+          onFetchBeds={fetchAvailableBeds}
+          getTriageLevelClass={getTriageLevelClass}
+        />
       )}
 
       {/* Request Details & Bed Assignment Modal */}
@@ -992,6 +953,53 @@ function ICUManagerDashboard({
                 }}
               >
                 View & Assign Bed
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Deny Request Modal */}
+      {showDenyModal && (
+        <div className="modal-overlay" onClick={() => setShowDenyModal(false)}>
+          <div className="modal-content deny-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Deny Bed Request</h2>
+              <button className="modal-close" onClick={() => setShowDenyModal(false)}>×</button>
+            </div>
+
+            <div className="modal-body">
+             
+              
+              <div className="form-group">
+                <textarea
+                  value={denyReason}
+                  onChange={(e) => setDenyReason(e.target.value)}
+                  placeholder="Enter the reason for denial (e.g., No available beds, Patient redirected to another facility, etc.)"
+                  rows="4"
+                  autoFocus
+                  className="deny-reason-textarea"
+                />
+              </div>
+            </div>
+
+            <div className="modal-actions">
+              <button
+                className="btn-secondary"
+                onClick={() => {
+                  setShowDenyModal(false);
+                  setDenyReason('');
+                  setRequestToDeny(null);
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                className="btn-danger"
+                onClick={confirmDenyRequest}
+                disabled={!denyReason.trim()}
+              >
+                Confirm Denial
               </button>
             </div>
           </div>

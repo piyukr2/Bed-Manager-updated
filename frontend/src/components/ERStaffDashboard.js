@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import EmergencyAdmission from './EmergencyAdmission';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
@@ -24,7 +25,7 @@ function ERStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socket 
       age: '',
       gender: 'Male',
       contactNumber: '',
-      triageLevel: 'Semi-Urgent',
+      triageLevel: 'Urgent',
       reasonForAdmission: '',
       requiredEquipment: 'Standard',
       estimatedStay: 24
@@ -136,7 +137,7 @@ function ERStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socket 
 
   const fetchStats = async () => {
     try {
-      const response = await axios.get(`${API_URL}/bed-requests/stats`);
+      await axios.get(`${API_URL}/bed-requests/stats`);
       // setStats(response.data);
     } catch (error) {
       console.error('Error fetching stats:', error);
@@ -240,7 +241,7 @@ function ERStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socket 
           age: '',
           gender: 'Male',
           contactNumber: '',
-          triageLevel: 'Semi-Urgent',
+          triageLevel: 'Urgent',
           reasonForAdmission: '',
           requiredEquipment: 'Standard',
           estimatedStay: 24
@@ -332,10 +333,8 @@ function ERStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socket 
 
   const getTriageLevelClass = (level) => {
     const classes = {
-      Critical: 'triage-critical',
       Urgent: 'triage-urgent',
-      'Semi-Urgent': 'triage-semi-urgent',
-      'Non-Urgent': 'triage-non-urgent'
+      'Not Urgent': 'triage-non-urgent'
     };
     return classes[level] || '';
   };
@@ -633,253 +632,18 @@ function ERStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socket 
       </div>
 
       {/* Create Request Modal */}
-      {showCreateModal && (
-        <div className="modal-overlay" onClick={() => setShowCreateModal(false)}>
-          <div className="modal-content emergency-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2>New Bed Request</h2>
-              <button className="modal-close" onClick={() => setShowCreateModal(false)}>×</button>
-            </div>
-
-            <form onSubmit={handleCreateRequest} className="request-form">
-              <div className="form-section">
-                <h3>Patient Information</h3>
-
-                <div className="form-row">
-                  <div className="form-group">
-                    <label>Patient Name *</label>
-                    <input
-                      type="text"
-                      required
-                      value={newRequest.patientDetails.name}
-                      onChange={(e) => setNewRequest({
-                        ...newRequest,
-                        patientDetails: { ...newRequest.patientDetails, name: e.target.value }
-                      })}
-                      placeholder="Enter patient name"
-                    />
-                  </div>
-
-                  <div className="form-group">
-                    <label>Age *</label>
-                    <input
-                      type="number"
-                      required
-                      min="0"
-                      max="150"
-                      value={newRequest.patientDetails.age}
-                      onChange={(e) => setNewRequest({
-                        ...newRequest,
-                        patientDetails: { ...newRequest.patientDetails, age: e.target.value }
-                      })}
-                      placeholder="Age"
-                    />
-                  </div>
-
-                  <div className="form-group">
-                    <label>Gender *</label>
-                    <select
-                      required
-                      value={newRequest.patientDetails.gender}
-                      onChange={(e) => setNewRequest({
-                        ...newRequest,
-                        patientDetails: { ...newRequest.patientDetails, gender: e.target.value }
-                      })}
-                    >
-                      <option value="Male">Male</option>
-                      <option value="Female">Female</option>
-                      <option value="Other">Other</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="form-group">
-                  <label>Contact Number</label>
-                  <input
-                    type="tel"
-                    value={newRequest.patientDetails.contactNumber}
-                    onChange={(e) => setNewRequest({
-                      ...newRequest,
-                      patientDetails: { ...newRequest.patientDetails, contactNumber: e.target.value }
-                    })}
-                    placeholder="Contact number"
-                  />
-                </div>
-              </div>
-
-              <div className="form-section">
-                <h3>Medical Details</h3>
-
-                <div className="form-row">
-                  <div className="form-group">
-                    <label>Triage Level *</label>
-                    <select
-                      required
-                      value={newRequest.patientDetails.triageLevel}
-                      onChange={(e) => setNewRequest({
-                        ...newRequest,
-                        patientDetails: { ...newRequest.patientDetails, triageLevel: e.target.value }
-                      })}
-                      className={`triage-select ${getTriageLevelClass(newRequest.patientDetails.triageLevel)}`}
-                    >
-                      <option value="Critical">Critical</option>
-                      <option value="Semi-Urgent">Semi-Urgent</option>
-                      <option value="Non-Urgent">Non-Urgent</option>
-                    </select>
-                  </div>
-
-                  <div className="form-group">
-                    <label>Required Equipment *</label>
-                    <select
-                      required
-                      value={newRequest.patientDetails.requiredEquipment}
-                      onChange={(e) => setNewRequest({
-                        ...newRequest,
-                        patientDetails: { ...newRequest.patientDetails, requiredEquipment: e.target.value }
-                      })}
-                    >
-                      <option value="Standard">Standard</option>
-                      <option value="Ventilator">Ventilator</option>
-                      <option value="ICU Monitor">ICU Monitor</option>
-                      <option value="Cardiac Monitor">Cardiac Monitor</option>
-                      <option value="Dialysis">Dialysis</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="form-group">
-                  <label>Reason for Admission *</label>
-                  <textarea
-                    required
-                    rows="3"
-                    value={newRequest.patientDetails.reasonForAdmission}
-                    onChange={(e) => setNewRequest({
-                      ...newRequest,
-                      patientDetails: { ...newRequest.patientDetails, reasonForAdmission: e.target.value }
-                    })}
-                    placeholder="Describe the reason for admission"
-                  />
-                </div>
-
-                <div className="form-row">
-                  <div className="form-group">
-                    <label>Estimated Stay (hours)</label>
-                    <input
-                      type="number"
-                      min="1"
-                      value={newRequest.patientDetails.estimatedStay}
-                      onChange={(e) => setNewRequest({
-                        ...newRequest,
-                        patientDetails: { ...newRequest.patientDetails, estimatedStay: parseInt(e.target.value) }
-                      })}
-                    />
-                  </div>
-
-                  <div className="form-group">
-                    <label>Preferred Ward</label>
-                    <select
-                      value={newRequest.preferredWard}
-                      onChange={(e) => {
-                        const ward = e.target.value;
-                        setNewRequest({ ...newRequest, preferredWard: ward });
-                        if (reserveBed) {
-                          fetchAvailableBeds(ward);
-                        }
-                      }}
-                    >
-                      <option value="">Any Available</option>
-                      <option value="ICU">ICU</option>
-                      <option value="Emergency">Emergency</option>
-                      <option value="Cardiology">Cardiology</option>
-                      <option value="General Ward">General Ward</option>
-                    </select>
-                  </div>
-                </div>
-
-                {/* Bed Reservation Option */}
-                <div className="form-group">
-                  <label className="checkbox-label">
-                    <input
-                      type="checkbox"
-                      checked={reserveBed}
-                      onChange={(e) => {
-                        setReserveBed(e.target.checked);
-                        if (e.target.checked) {
-                          fetchAvailableBeds(newRequest.preferredWard);
-                        } else {
-                          setAvailableBeds([]);
-                          setSelectedBedId('');
-                        }
-                      }}
-                    />
-                    <span>Reserve a bed immediately (optional)</span>
-                  </label>
-                </div>
-
-                {reserveBed && (
-                  <div className="form-group">
-                    <label>Select Bed to Reserve</label>
-                    <select
-                      value={selectedBedId}
-                      onChange={(e) => setSelectedBedId(e.target.value)}
-                      required={reserveBed}
-                    >
-                      <option value="">-- Select a bed --</option>
-                      {availableBeds.map((bed) => (
-                        <option key={bed._id} value={bed._id}>
-                          {bed.bedNumber} - {bed.ward} (Floor {bed.location.floor}, {bed.equipmentType})
-                        </option>
-                      ))}
-                    </select>
-                    {availableBeds.length === 0 && (
-                      <small className="form-help-text">
-                        No available beds in {newRequest.preferredWard || 'selected ward'}
-                      </small>
-                    )}
-                  </div>
-                )}
-
-                <div className="form-group">
-                  <label>Expected Time of Arrival</label>
-                  <input
-                    type="datetime-local"
-                    value={newRequest.eta}
-                    onChange={(e) => setNewRequest({ ...newRequest, eta: e.target.value })}
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label>Additional Notes</label>
-                  <textarea
-                    rows="2"
-                    value={newRequest.notes}
-                    onChange={(e) => setNewRequest({ ...newRequest, notes: e.target.value })}
-                    placeholder="Any additional information"
-                  />
-                </div>
-              </div>
-
-              <div className="modal-actions">
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  onClick={() => setShowCreateModal(false)}
-                  disabled={loading}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="btn-primary"
-                  disabled={loading}
-                >
-                  {loading ? 'Creating...' : 'Create Request'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <EmergencyAdmission
+        isOpen={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        onSubmit={handleCreateRequest}
+        loading={loading}
+        title="New Bed Request"
+        submitButtonText="Create Request"
+        showBedReservation={true}
+        availableBeds={availableBeds}
+        onFetchBeds={fetchAvailableBeds}
+        getTriageLevelClass={getTriageLevelClass}
+      />
 
       {/* Request Status Notification Popup */}
       {showNotification && notification && (
