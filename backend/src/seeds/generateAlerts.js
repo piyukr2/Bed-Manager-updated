@@ -11,8 +11,7 @@ const alertMessages = {
     'Critical occupancy level reached',
     'Emergency capacity exceeded',
     'ICU at maximum capacity',
-    'Immediate bed allocation required',
-    'Critical bed shortage detected'
+    'Immediate bed allocation required'
   ],
   warning: [
     'High occupancy level detected',
@@ -75,24 +74,20 @@ async function generateAlerts(count = 25) {
       const messages = alertMessages[type];
       const message = messages[Math.floor(Math.random() * messages.length)];
       
-      // Create alerts with different timestamps spread over the last 24 hours
-      const hoursAgo = Math.floor(Math.random() * 24);
-      const minutesAgo = Math.floor(Math.random() * 60);
-      const createdAt = new Date(now - (hoursAgo * 60 * 60 * 1000) - (minutesAgo * 60 * 1000));
-
+      // Create alerts with current time - let Mongoose handle timestamps
+      // Don't set createdAt manually to ensure it's current
       const alert = {
         type,
         message: `${message}`,
         ward,
         bedId: bedIds.length > 0 ? bedIds[Math.floor(Math.random() * bedIds.length)] : null,
         acknowledged: Math.random() > 0.7, // 70% unacknowledged
-        priority: type === 'critical' || type === 'emergency' ? 5 : type === 'warning' ? 3 : 1,
-        createdAt
+        priority: type === 'critical' || type === 'emergency' ? 5 : type === 'warning' ? 3 : 1
       };
 
       if (alert.acknowledged) {
         alert.acknowledgedBy = `Staff${Math.floor(Math.random() * 10) + 1}`;
-        alert.acknowledgedAt = new Date(createdAt.getTime() + Math.random() * 3600000); // Within an hour
+        alert.acknowledgedAt = new Date(); // Current time for acknowledgement
       }
 
       alerts.push(alert);
@@ -100,7 +95,11 @@ async function generateAlerts(count = 25) {
 
     // Insert alerts
     const result = await Alert.insertMany(alerts);
-    console.log(`✅ Generated ${result.length} test alerts`);
+    console.log(`✅ Inserted ${result.length} test alerts`);
+    
+    // Verify insertion with a count
+    const insertedCount = await Alert.countDocuments();
+    console.log(`📊 Count in database: ${insertedCount}`);
 
     // Show summary
     const summary = await Alert.aggregate([

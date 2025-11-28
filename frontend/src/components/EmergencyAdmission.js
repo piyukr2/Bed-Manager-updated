@@ -52,12 +52,8 @@ function EmergencyAdmission({
   const handleSubmit = (e) => {
     e.preventDefault();
     
-    const submitData = {
-      ...newRequest,
-      selectedBedId: reserveBed ? selectedBedId : undefined
-    };
-
-    onSubmit(submitData);
+    // Pass the event and the request data to parent
+    onSubmit(e, newRequest, reserveBed, selectedBedId);
     
     // Reset form after submission
     setNewRequest({

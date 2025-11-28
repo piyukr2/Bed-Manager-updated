@@ -31,7 +31,7 @@ const alertSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Auto-expire old alerts after 24 hours
-alertSchema.index({ createdAt: 1 }, { expireAfterSeconds: 86400 });
+// Auto-expire old alerts after 24 hours (DISABLED for testing)
+// alertSchema.index({ createdAt: 1 }, { expireAfterSeconds: 86400 });
 
 module.exports = mongoose.model('Alert', alertSchema);

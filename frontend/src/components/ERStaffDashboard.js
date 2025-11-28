@@ -12,28 +12,57 @@ function ERStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socket 
   const [loading, setLoading] = useState(false);
   const [showNotification, setShowNotification] = useState(false);
   const [notification, setNotification] = useState(null);
-  const [reserveBed, setReserveBed] = useState(false);
   const [availableBeds, setAvailableBeds] = useState([]);
-  const [selectedBedId, setSelectedBedId] = useState('');
   const [activeTab, setActiveTab] = useState('all'); // 'all', 'pending', 'approved', 'closed'
   const [selectedWard, setSelectedWard] = useState('All'); // Ward filter
   const [searchQuery, setSearchQuery] = useState(''); // Search by bed number or patient name
   const [settings, setSettings] = useState(null);
-  const [newRequest, setNewRequest] = useState({
-    patientDetails: {
-      name: '',
-      age: '',
-      gender: 'Male',
-      contactNumber: '',
-      triageLevel: 'Urgent',
-      reasonForAdmission: '',
-      requiredEquipment: 'Standard',
-      estimatedStay: 24
-    },
-    preferredWard: 'ICU',
-    eta: '',
-    notes: ''
-  });
+
+  // Play notification sound function
+  const playNotificationSound = () => {
+    try {
+      // Create an AudioContext for better browser support
+      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      
+      // Create a more pleasant notification sound with multiple tones
+      const playTone = (frequency, startTime, duration, volume = 0.15) => {
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        
+        oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(frequency, startTime);
+        
+        // Smooth fade in and out for better sound quality
+        gainNode.gain.setValueAtTime(0, startTime);
+        gainNode.gain.linearRampToValueAtTime(volume, startTime + 0.01);
+        gainNode.gain.linearRampToValueAtTime(volume * 0.8, startTime + duration - 0.05);
+        gainNode.gain.linearRampToValueAtTime(0, startTime + duration);
+        
+        oscillator.start(startTime);
+        oscillator.stop(startTime + duration);
+      };
+      
+      // Create a pleasant three-tone ascending notification (like a modern app notification)
+      const now = audioContext.currentTime;
+      playTone(523.25, now, 0.15, 0.12);        // C5 - first note
+      playTone(659.25, now + 0.12, 0.15, 0.14); // E5 - second note
+      playTone(783.99, now + 0.24, 0.25, 0.16); // G5 - third note (longer, slightly louder)
+
+    } catch (error) {
+      console.log('Audio notification not available:', error);
+      // Fallback: try to play mp3 if it exists
+      try {
+        const audio = new Audio('/notification.mp3');
+        audio.volume = 0.5;
+        audio.play().catch(e => console.log('Audio play failed:', e));
+      } catch (e) {
+        console.log('Audio fallback failed');
+      }
+    }
+  };
 
   useEffect(() => {
     fetchRequests();
@@ -71,12 +100,7 @@ function ERStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socket 
       setShowNotification(true);
 
       // Play notification sound
-      try {
-        const audio = new Audio('/notification.mp3');
-        audio.play().catch(e => console.log('Audio play failed:', e));
-      } catch (e) {
-        console.log('Audio not available');
-      }
+      playNotificationSound();
     });
 
     socket.on('bed-request-denied', (request) => {
@@ -91,12 +115,7 @@ function ERStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socket 
       setShowNotification(true);
 
       // Play notification sound
-      try {
-        const audio = new Audio('/notification.mp3');
-        audio.play().catch(e => console.log('Audio play failed:', e));
-      } catch (e) {
-        console.log('Audio not available');
-      }
+      playNotificationSound();
     });
 
     socket.on('bed-request-fulfilled', (request) => {
@@ -218,47 +237,27 @@ function ERStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socket 
     }
   };
 
-  const handleCreateRequest = async (e) => {
+  const handleCreateRequest = async (e, requestData, shouldReserveBed, bedId) => {
     e.preventDefault();
     setLoading(true);
 
     try {
       // Create bed request
-      const response = await axios.post(`${API_URL}/bed-requests`, newRequest);
+      const response = await axios.post(`${API_URL}/bed-requests`, requestData);
       const createdRequest = response.data.request;
 
       // If user wants to reserve a bed immediately, approve the request
-      if (reserveBed && selectedBedId) {
+      if (shouldReserveBed && bedId) {
         await axios.post(`${API_URL}/bed-requests/${createdRequest._id}/approve`, {
-          bedId: selectedBedId
+          bedId: bedId
         });
       }
-
-      // Reset form
-      setNewRequest({
-        patientDetails: {
-          name: '',
-          age: '',
-          gender: 'Male',
-          contactNumber: '',
-          triageLevel: 'Urgent',
-          reasonForAdmission: '',
-          requiredEquipment: 'Standard',
-          estimatedStay: 24
-        },
-        preferredWard: 'ICU',
-        eta: '',
-        notes: ''
-      });
-      setReserveBed(false);
-      setSelectedBedId('');
-      setAvailableBeds([]);
 
       setShowCreateModal(false);
       fetchRequests();
       fetchStats();
 
-      if (reserveBed && selectedBedId) {
+      if (shouldReserveBed && bedId) {
         alert('✓ Bed request created and bed reserved successfully!');
       }
     } catch (error) {
