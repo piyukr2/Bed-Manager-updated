@@ -289,33 +289,22 @@ function ICUManagerDashboard({
     }
   };
 
-  const handleCreateEmergencyAdmission = async (e, requestData, shouldReserveBed, bedId) => {
-    e.preventDefault();
   const handleCreateEmergencyAdmission = async (requestData) => {
     setLoading(true);
 
     try {
       const { selectedBedId, ...requestPayload } = requestData;
       // Create bed request
-      const response = await axios.post(`${API_URL}/bed-requests`, requestData);
-      const createdRequest = response.data.request;
-
-      // If user wants to reserve a bed immediately, approve the request
-      if (shouldReserveBed && bedId) {
       const response = await axios.post(`${API_URL}/bed-requests`, requestPayload);
       const createdRequest = response.data.request;
 
       // If user wants to reserve a bed immediately, approve the request
       if (selectedBedId) {
         await axios.post(`${API_URL}/bed-requests/${createdRequest._id}/approve`, {
-          bedId: bedId
+          bedId: selectedBedId
         });
       }
 
-      setShowEmergencyModal(false);
-      fetchBedRequests();
-
-      if (shouldReserveBed && bedId) {
       setAvailableBeds([]);
       setShowEmergencyModal(false);
       fetchBedRequests();

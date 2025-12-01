@@ -239,26 +239,19 @@ function ERStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socket 
     }
   };
 
-  const handleCreateRequest = async (e, requestData, shouldReserveBed, bedId) => {
-    e.preventDefault();
   const handleCreateRequest = async (requestData) => {
     setLoading(true);
 
     try {
       const { selectedBedId, ...requestPayload } = requestData;
       // Create bed request
-      const response = await axios.post(`${API_URL}/bed-requests`, requestData);
-      const createdRequest = response.data.request;
-
-      // If user wants to reserve a bed immediately, approve the request
-      if (shouldReserveBed && bedId) {
       const response = await axios.post(`${API_URL}/bed-requests`, requestPayload);
       const createdRequest = response.data.request;
 
       // If user wants to reserve a bed immediately, approve the request
       if (selectedBedId) {
         await axios.post(`${API_URL}/bed-requests/${createdRequest._id}/approve`, {
-          bedId: bedId
+          bedId: selectedBedId
         });
       }
 
@@ -267,7 +260,6 @@ function ERStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socket 
       fetchRequests();
       fetchStats();
 
-      if (shouldReserveBed && bedId) {
       if (selectedBedId) {
         alert('✓ Bed request created and bed reserved successfully!');
       }
@@ -278,6 +270,7 @@ function ERStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socket 
       setLoading(false);
     }
   };
+
 
   const handleCancelRequest = async (requestId) => {
     // Find the request to check its status
