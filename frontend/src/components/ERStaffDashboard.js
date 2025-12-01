@@ -14,7 +14,7 @@ function ERStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socket 
   const [showNotification, setShowNotification] = useState(false);
   const [notification, setNotification] = useState(null);
   const [availableBeds, setAvailableBeds] = useState([]);
-  const [activeTab, setActiveTab] = useState('all'); // 'all', 'pending', 'approved', 'closed'
+  const [activeTab, setActiveTab] = useState('all'); // 'all', 'pending', 'approved'
   const [selectedWard, setSelectedWard] = useState('All'); // Ward filter
   const [searchQuery, setSearchQuery] = useState(''); // Search by bed number or patient name
   // eslint-disable-next-line no-unused-vars
@@ -279,7 +279,7 @@ function ERStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socket 
     if (!request) return;
 
     // Different actions based on status
-  const isTerminalState = ['cancelled', 'denied', 'fulfilled'].includes(request.status);
+  const isTerminalState = request.status === 'denied';
     
     if (isTerminalState) {
       // For terminal states, soft delete from database
@@ -502,12 +502,12 @@ function ERStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socket 
               </span>
             </button>
             <button
-              className={`tab ${activeTab === 'closed' ? 'active' : ''}`}
-              onClick={() => setActiveTab('closed')}
+              className={`tab ${activeTab === 'denied' ? 'active' : ''}`}
+              onClick={() => setActiveTab('denied')}
             >
-              Closed
+              Denied
               <span className="badge">
-                {requests.filter(r => ['denied', 'cancelled', 'fulfilled'].includes(r.status) && (selectedWard === 'All' || r.preferredWard === selectedWard)).length}
+                {requests.filter(r => r.status === 'denied' && (selectedWard === 'All' || r.preferredWard === selectedWard)).length}
               </span>
             </button>
           </div>
@@ -547,11 +547,10 @@ function ERStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socket 
             .length === 0 ? (
             <div className="empty-state">
               <div className="empty-icon">📋</div>
-              <h3>No {activeTab === 'all' ? '' : activeTab === 'closed' ? 'Closed' : activeTab.charAt(0).toUpperCase() + activeTab.slice(1)} Requests</h3>
+              <h3>No {activeTab === 'all' ? '' : activeTab.charAt(0).toUpperCase() + activeTab.slice(1)} Requests</h3>
               <p>
-                {searchQuery ? `No requests matching "${searchQuery}"` : 
-                  activeTab === 'all' ? 'Click "New Bed Request" to create your first request' : 
-                  activeTab === 'closed' ? 'No closed requests (denied, cancelled, or fulfilled)' :
+                {searchQuery ? `No requests matching "${searchQuery}"` :
+                  activeTab === 'all' ? 'Click "New Bed Request" to create your first request' :
                   `No ${activeTab} requests found`}
               </p>
             </div>
@@ -560,7 +559,6 @@ function ERStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socket 
               {requests
                 .filter(r => {
                   if (activeTab === 'all') return true;
-                  if (activeTab === 'closed') return ['denied', 'cancelled', 'fulfilled'].includes(r.status);
                   return r.status === activeTab;
                 })
                 .filter(r => selectedWard === 'All' || r.preferredWard === selectedWard)
@@ -574,7 +572,7 @@ function ERStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socket 
                   );
                 })
                 .map((request) => {
-                  const isTerminalState = ['cancelled', 'denied', 'fulfilled'].includes(request.status);
+                  const isTerminalState = request.status === 'denied';
                   return (
                 <div key={request._id} className="request-card request-card-compact">
                   {/* Close/Remove button */}
