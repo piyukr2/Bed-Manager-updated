@@ -7,7 +7,7 @@ const express = require('express');
 const router = express.Router();
 
 // Import models - these will be passed via middleware
-let Bed, Patient, OccupancyHistory, Alert, CleaningJob, CleaningStaff;
+let Bed, Patient, OccupancyHistory, Alert, CleaningJob;
 
 // Middleware to inject models
 const initializeModels = (models) => {
@@ -16,7 +16,6 @@ const initializeModels = (models) => {
   OccupancyHistory = models.OccupancyHistory;
   Alert = models.Alert;
   CleaningJob = models.CleaningJob;
-  CleaningStaff = models.CleaningStaff;
 };
 
 /**
@@ -36,8 +35,7 @@ router.post('/import', async (req, res) => {
       patients: { imported: 0, skipped: 0, errors: 0 },
       occupancyHistory: { imported: 0, skipped: 0, errors: 0 },
       alerts: { imported: 0, skipped: 0, errors: 0 },
-      cleaningJobs: { imported: 0, skipped: 0, errors: 0 },
-      cleaningStaff: { imported: 0, skipped: 0, errors: 0 }
+      cleaningJobs: { imported: 0, skipped: 0, errors: 0 }
     };
 
     // 1. Import Beds
@@ -212,40 +210,7 @@ router.post('/import', async (req, res) => {
       }
     }
 
-    // 5. Import Cleaning Staff
-    if (seedData.cleaningStaff && Array.isArray(seedData.cleaningStaff)) {
-      for (const staffData of seedData.cleaningStaff) {
-        try {
-          const existingStaff = await CleaningStaff.findOne({ staffId: staffData.staffId });
-          if (existingStaff) {
-            results.cleaningStaff.skipped++;
-          } else {
-            const staff = new CleaningStaff({
-              staffId: staffData.staffId,
-              name: staffData.name,
-              status: staffData.status || 'available',
-              activeJobsCount: staffData.activeJobsCount || 0,
-              totalJobsCompleted: staffData.totalJobsCompleted || 0,
-              createdAt: staffData.createdAt ? new Date(staffData.createdAt) : new Date()
-            });
-            await staff.save();
-            results.cleaningStaff.imported++;
-          }
-        } catch (error) {
-          console.error(`Error importing cleaning staff ${staffData.staffId}:`, error.message);
-          results.cleaningStaff.errors++;
-        }
-      }
-    }
-
-    // Build staff lookup for cleaning jobs
-    const staffLookup = {};
-    const allStaff = await CleaningStaff.find({});
-    allStaff.forEach(staff => {
-      staffLookup[staff.staffId] = staff._id;
-    });
-
-    // 6. Import Cleaning Jobs (only recent ones)
+    // 5. Import Cleaning Jobs (only recent ones)
     if (seedData.cleaningJobs && Array.isArray(seedData.cleaningJobs)) {
       const recentJobs = seedData.cleaningJobs.filter(job => {
         const createdAt = new Date(job.createdAt);

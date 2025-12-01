@@ -1,7 +1,6 @@
 const express = require('express');
 const router = express.Router();
 const CleaningJob = require('../models/CleaningJob');
-const CleaningStaff = require('../models/CleaningStaff');
 const Bed = require('../models/Bed');
 
 // Get all cleaning jobs with optional filters
@@ -15,8 +14,8 @@ router.get('/', async (req, res) => {
     if (ward) filter.ward = ward;
 
     const jobs = await CleaningJob.find(filter)
-      .populate('assignedTo', 'name staffId status')
       .sort({ createdAt: -1 });
+
 
     res.json(jobs);
   } catch (error) {
@@ -115,44 +114,18 @@ router.patch('/:id/assign', async (req, res) => {
       return res.status(404).json({ error: 'Job not found' });
     }
 
-    const staff = await CleaningStaff.findById(staffId);
-    if (!staff) {
-      console.log('❌ Staff not found:', staffId);
-      return res.status(404).json({ error: 'Staff not found' });
-    }
+    console.log('✅ Found job, updating...');
 
-    console.log('✅ Found job and staff, updating...');
-
-    // Update previous staff if exists
-    if (job.assignedTo) {
-      const prevStaff = await CleaningStaff.findById(job.assignedTo);
-      if (prevStaff) {
-        prevStaff.activeJobsCount = Math.max(0, prevStaff.activeJobsCount - 1);
-        if (prevStaff.activeJobsCount === 0) {
-          prevStaff.status = 'available';
-        }
-        await prevStaff.save();
-      }
-    }
-
-    // Assign to new staff
-    job.assignedTo = staff._id;
-    job.assignedToName = staff.name;
+    // Assign to staff (simplified - no staff tracking)
+    job.assignedTo = staffId;
+    job.assignedToName = 'Staff Member';
     await job.save();
-
-    // Update staff status
-    staff.activeJobsCount += 1;
-    staff.status = 'busy';
-    await staff.save();
-
-    const populatedJob = await CleaningJob.findById(job._id)
-      .populate('assignedTo', 'name staffId status');
 
     console.log('✅ Job assigned successfully');
     // Emit socket event
-    req.app.get('io').emit('jobAssigned', populatedJob);
+    req.app.get('io').emit('jobAssigned', job);
 
-    res.json(populatedJob);
+    res.json(job);
   } catch (error) {
     console.error('❌ Error assigning staff:', error);
     res.status(500).json({ error: error.message });
@@ -175,19 +148,6 @@ router.patch('/:id/complete', async (req, res) => {
     job.status = 'completed';
     job.completedAt = new Date();
     await job.save();
-
-    // Update staff status
-    if (job.assignedTo) {
-      const staff = await CleaningStaff.findById(job.assignedTo);
-      if (staff) {
-        staff.activeJobsCount = Math.max(0, staff.activeJobsCount - 1);
-        staff.totalJobsCompleted += 1;
-        if (staff.activeJobsCount === 0) {
-          staff.status = 'available';
-        }
-        await staff.save();
-      }
-    }
 
     // Update bed status to available
     await Bed.findByIdAndUpdate(job.bedId, {
@@ -212,18 +172,6 @@ router.delete('/:id', async (req, res) => {
     
     if (!job) {
       return res.status(404).json({ error: 'Job not found' });
-    }
-
-    // Update staff if job was assigned
-    if (job.assignedTo && job.status === 'active') {
-      const staff = await CleaningStaff.findById(job.assignedTo);
-      if (staff) {
-        staff.activeJobsCount = Math.max(0, staff.activeJobsCount - 1);
-        if (staff.activeJobsCount === 0) {
-          staff.status = 'available';
-        }
-        await staff.save();
-      }
     }
 
     res.json({ message: 'Job deleted successfully' });
