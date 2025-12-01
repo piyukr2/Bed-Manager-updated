@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import EmergencyAdmission from './EmergencyAdmission';
+import ResizableCard from './ResizableCard';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
@@ -16,6 +17,7 @@ function ERStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socket 
   const [activeTab, setActiveTab] = useState('all'); // 'all', 'pending', 'approved', 'closed'
   const [selectedWard, setSelectedWard] = useState('All'); // Ward filter
   const [searchQuery, setSearchQuery] = useState(''); // Search by bed number or patient name
+  // eslint-disable-next-line no-unused-vars
   const [settings, setSettings] = useState(null);
 
   // Play notification sound function
@@ -138,12 +140,12 @@ function ERStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socket 
 
     return () => {
       socket.off('bed-request-approved');
-  socket.off('bed-request-denied');
-  socket.off('bed-request-fulfilled');
+      socket.off('bed-request-denied');
+      socket.off('bed-request-fulfilled');
       socket.off('bed-updated');
       socket.off('bed-request-deleted');
     };
-  }, [socket]);
+  }, [socket]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchRequests = async () => {
     try {
@@ -390,64 +392,87 @@ function ERStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socket 
 
       <div className="er-main-content">
         {/* Ward Filter */}
-        <div className="ward-filter-section">
-          <label>Filter by Ward:</label>
-          <div className="ward-buttons">
-            {['All', 'Emergency', 'ICU', 'General Ward', 'Cardiology'].map((ward) => (
-              <button
-                key={ward}
-                className={`ward-filter-btn ${selectedWard === ward ? 'active' : ''}`}
-                onClick={() => setSelectedWard(ward)}
-              >
-                {ward}
-              </button>
-            ))}
+        <ResizableCard
+          title="Ward Filter"
+          minWidth={300}
+          minHeight={100}
+        >
+          <div className="ward-filter-section">
+            <label>Filter by Ward:</label>
+            <div className="ward-buttons">
+              {['All', 'Emergency', 'ICU', 'General Ward', 'Cardiology'].map((ward) => (
+                <button
+                  key={ward}
+                  className={`ward-filter-btn ${selectedWard === ward ? 'active' : ''}`}
+                  onClick={() => setSelectedWard(ward)}
+                >
+                  {ward}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
+        </ResizableCard>
 
         {/* Occupancy Rate - Above Availability Summary */}
         {filteredAvailability && (
-          <div className="occupancy-rate-section">
-            <h3>Occupancy Rate{selectedWard !== 'All' ? ` - ${selectedWard}` : ' (Hospital-wide)'}</h3>
-            <div className="occupancy-rate-display">
-              <span className={`occupancy-rate-value ${filteredAvailability.occupancyRate >= 90 ? 'critical' : filteredAvailability.occupancyRate >= 80 ? 'warning' : 'normal'}`}>
-                {filteredAvailability.occupancyRate}%
-              </span>
+          <ResizableCard
+            title="Occupancy Rate"
+            minWidth={300}
+            minHeight={120}
+          >
+            <div className="occupancy-rate-section">
+              <h3>Occupancy Rate{selectedWard !== 'All' ? ` - ${selectedWard}` : ' (Hospital-wide)'}</h3>
+              <div className="occupancy-rate-display">
+                <span className={`occupancy-rate-value ${filteredAvailability.occupancyRate >= 90 ? 'critical' : filteredAvailability.occupancyRate >= 80 ? 'warning' : 'normal'}`}>
+                  {filteredAvailability.occupancyRate}%
+                </span>
+              </div>
             </div>
-          </div>
+          </ResizableCard>
         )}
 
         {/* Availability Summary */}
         {filteredAvailability && (
-          <div className="availability-summary">
-            <h3>Current Bed Availability{selectedWard !== 'All' ? ` - ${selectedWard}` : ' (Hospital-wide)'}</h3>
-            <div className="availability-grid">
-              <div className="availability-item">
-                <span className="availability-label">Total Beds:</span>
-                <span className="availability-value total">{filteredAvailability.totalBeds}</span>
-              </div>
-              <div className="availability-item">
-                <span className="availability-label">Available Beds:</span>
-                <span className="availability-value available">{filteredAvailability.available}</span>
-              </div>
-              <div className="availability-item">
-                <span className="availability-label">Occupied:</span>
-                <span className="availability-value occupied">{filteredAvailability.occupied}</span>
-              </div>
-              <div className="availability-item">
-                <span className="availability-label">Under Cleaning:</span>
-                <span className="availability-value cleaning">{filteredAvailability.cleaning}</span>
-              </div>
-              <div className="availability-item">
-                <span className="availability-label">Reserved:</span>
-                <span className="availability-value reserved">{filteredAvailability.reserved}</span>
+          <ResizableCard
+            title="Current Bed Availability"
+            minWidth={400}
+            minHeight={150}
+          >
+            <div className="availability-summary">
+              <h3>Current Bed Availability{selectedWard !== 'All' ? ` - ${selectedWard}` : ' (Hospital-wide)'}</h3>
+              <div className="availability-grid">
+                <div className="availability-item">
+                  <span className="availability-label">Total Beds:</span>
+                  <span className="availability-value total">{filteredAvailability.totalBeds}</span>
+                </div>
+                <div className="availability-item">
+                  <span className="availability-label">Available Beds:</span>
+                  <span className="availability-value available">{filteredAvailability.available}</span>
+                </div>
+                <div className="availability-item">
+                  <span className="availability-label">Occupied:</span>
+                  <span className="availability-value occupied">{filteredAvailability.occupied}</span>
+                </div>
+                <div className="availability-item">
+                  <span className="availability-label">Under Cleaning:</span>
+                  <span className="availability-value cleaning">{filteredAvailability.cleaning}</span>
+                </div>
+                <div className="availability-item">
+                  <span className="availability-label">Reserved:</span>
+                  <span className="availability-value reserved">{filteredAvailability.reserved}</span>
+                </div>
               </div>
             </div>
-          </div>
+          </ResizableCard>
         )}
 
         {/* Request Queue */}
-        <div className="requests-section">
+        <ResizableCard
+          title="My Bed Requests"
+          minWidth={500}
+          minHeight={300}
+        >
+          <div className="requests-section">
           <div className="section-header">
             <h2>My Bed Requests</h2>
             <p>Track status of all your bed requests</p>
@@ -627,7 +652,8 @@ function ERStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socket 
               })}
             </div>
           )}
-        </div>
+          </div>
+        </ResizableCard>
       </div>
 
       {/* Create Request Modal */}

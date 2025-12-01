@@ -41,6 +41,7 @@ function ICUManagerDashboard({
   const [showDenyModal, setShowDenyModal] = useState(false);
   const [denyReason, setDenyReason] = useState('');
   const [requestToDeny, setRequestToDeny] = useState(null);
+  // eslint-disable-next-line no-unused-vars
   const [settings, setSettings] = useState(null);
 
   // Play notification sound function
@@ -89,22 +90,6 @@ function ICUManagerDashboard({
     }
   };
 
-  // Clear all resizable card dimensions on component mount (page refresh)
-  useEffect(() => {
-    const resizableKeys = [
-      'icu-alerts-width',
-      'icu-ward-filter-dimensions',
-      'icu-stats-dimensions',
-      'icu-capacity-graph-dimensions',
-      'icu-beds-view-dimensions',
-      'icu-requests-container-dimensions'
-    ];
-    
-    resizableKeys.forEach(key => {
-      localStorage.removeItem(key);
-    });
-  }, []);
-
   // Set default ward to 'All' on mount to show all 60 beds
   useEffect(() => {
     if (setSelectedWard) {
@@ -148,7 +133,7 @@ function ICUManagerDashboard({
       socket.off('bed-request-cancelled');
       socket.off('bed-request-fulfilled');
     };
-  }, [socket]);
+  }, [socket]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchBedRequests = async () => {
     try {
@@ -420,7 +405,6 @@ function ICUManagerDashboard({
                 minHeight={400}
                 enableWidth={true}
                 enableHeight={true}
-                storageKey="icu-alerts-width"
                 className="bed-manager-sidebar"
               >
                 <AlertPanel alerts={alerts} />
@@ -434,7 +418,6 @@ function ICUManagerDashboard({
                   minHeight={80}
                   enableWidth={true}
                   enableHeight={true}
-                  storageKey="icu-ward-filter-dimensions"
                   className="ward-filter-section-horizontal"
                 >
                   <label className="ward-filter-label">Filter by Ward:</label>
@@ -458,7 +441,6 @@ function ICUManagerDashboard({
                     minHeight={150}
                     enableWidth={true}
                     enableHeight={true}
-                    storageKey="icu-stats-dimensions"
                     className="stats-section-below-filter"
                   >
                     <Dashboard stats={filteredStats} />
@@ -472,7 +454,6 @@ function ICUManagerDashboard({
                     minHeight={250}
                     enableWidth={true}
                     enableHeight={true}
-                    storageKey="icu-capacity-graph-dimensions"
                     className="bed-capacity-graph-section"
                   >
                     <div className="graph-header">
@@ -662,7 +643,6 @@ function ICUManagerDashboard({
                   minHeight={300}
                   enableWidth={true}
                   enableHeight={true}
-                  storageKey="icu-beds-view-dimensions"
                   className="dashboard-main-beds"
                 >
                   <div className="beds-section-header">
@@ -685,7 +665,6 @@ function ICUManagerDashboard({
             minHeight={400}
             enableWidth={true}
             enableHeight={true}
-            storageKey="icu-requests-container-dimensions"
             className="requests-container"
           >
             <div className="requests-header">
