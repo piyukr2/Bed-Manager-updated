@@ -234,7 +234,7 @@ function App() {
     }
     setShowHome(true);
     setShowLogin(false);
-  }, [socket]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const toggleTheme = () => {
     setTheme(prev => (prev === 'light' ? 'dark' : 'light'));

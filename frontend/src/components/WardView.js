@@ -197,7 +197,7 @@ function WardView({ beds, onUpdateBed, canUpdateBeds }) {
           <div className="bed-modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h3>Bed Details and Management</h3>
-              <button className="close-btn" onClick={() => setSelectedBed(null)} aria-label="Close bed details">
+              <button className="modal-close" onClick={() => setSelectedBed(null)} aria-label="Close bed details">
                 ×
               </button>
             </div>

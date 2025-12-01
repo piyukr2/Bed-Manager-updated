@@ -29,8 +29,8 @@ const ResizableCard = ({
   const {
     ref,
     isResizing,
-    dimensions,
-    resetSize,
+    dimensions, // eslint-disable-line no-unused-vars
+    resetSize, // eslint-disable-line no-unused-vars
     ResizeHandles,
     style,
   } = useResizable({

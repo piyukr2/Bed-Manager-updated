@@ -41,23 +41,54 @@ function ICUManagerDashboard({
   const [showDenyModal, setShowDenyModal] = useState(false);
   const [denyReason, setDenyReason] = useState('');
   const [requestToDeny, setRequestToDeny] = useState(null);
+  // eslint-disable-next-line no-unused-vars
   const [settings, setSettings] = useState(null);
 
-  // Clear all resizable card dimensions on component mount (page refresh)
-  useEffect(() => {
-    const resizableKeys = [
-      'icu-alerts-width',
-      'icu-ward-filter-dimensions',
-      'icu-stats-dimensions',
-      'icu-capacity-graph-dimensions',
-      'icu-beds-view-dimensions',
-      'icu-requests-container-dimensions'
-    ];
-    
-    resizableKeys.forEach(key => {
-      localStorage.removeItem(key);
-    });
-  }, []);
+  // Play notification sound function
+  const playNotificationSound = () => {
+    try {
+      // Create an AudioContext for better browser support
+      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      
+      // Create a more pleasant notification sound with multiple tones
+      const playTone = (frequency, startTime, duration, volume = 0.15) => {
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        
+        oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(frequency, startTime);
+        
+        // Smooth fade in and out for better sound quality
+        gainNode.gain.setValueAtTime(0, startTime);
+        gainNode.gain.linearRampToValueAtTime(volume, startTime + 0.01);
+        gainNode.gain.linearRampToValueAtTime(volume * 0.8, startTime + duration - 0.05);
+        gainNode.gain.linearRampToValueAtTime(0, startTime + duration);
+        
+        oscillator.start(startTime);
+        oscillator.stop(startTime + duration);
+      };
+      
+      // Create a pleasant three-tone ascending notification (like a modern app notification)
+      const now = audioContext.currentTime;
+      playTone(523.25, now, 0.15, 0.12);        // C5 - first note
+      playTone(659.25, now + 0.12, 0.15, 0.14); // E5 - second note
+      playTone(783.99, now + 0.24, 0.25, 0.16); // G5 - third note (longer, slightly louder)
+
+    } catch (error) {
+      console.log('Audio notification not available:', error);
+      // Fallback: try to play mp3 if it exists
+      try {
+        const audio = new Audio('/notification.mp3');
+        audio.volume = 0.5;
+        audio.play().catch(e => console.log('Audio play failed:', e));
+      } catch (e) {
+        console.log('Audio fallback failed');
+      }
+    }
+  };
 
   // Set default ward to 'All' on mount to show all 60 beds
   useEffect(() => {
@@ -78,19 +109,16 @@ function ICUManagerDashboard({
   useEffect(() => {
     if (!socket) return;
 
-    socket.on('new-bed-request', (request) => {
+    const handleNewBedRequest = (request) => {
       fetchBedRequests();
       // Show popup notification
       setNewRequestNotification(request);
       setShowNewRequestAlert(true);
-      // Play notification sound (optional)
-      try {
-        const audio = new Audio('/notification.mp3');
-        audio.play().catch(e => console.log('Audio play failed:', e));
-      } catch (e) {
-        console.log('Audio not available');
-      }
-    });
+      // Play notification sound
+      playNotificationSound();
+    };
+
+    socket.on('new-bed-request', handleNewBedRequest);
 
     socket.on('bed-request-cancelled', () => {
       fetchBedRequests();
@@ -101,11 +129,11 @@ function ICUManagerDashboard({
     });
 
     return () => {
-      socket.off('new-bed-request');
+      socket.off('new-bed-request', handleNewBedRequest);
       socket.off('bed-request-cancelled');
       socket.off('bed-request-fulfilled');
     };
-  }, [socket]);
+  }, [socket]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchBedRequests = async () => {
     try {
@@ -261,22 +289,33 @@ function ICUManagerDashboard({
     }
   };
 
+  const handleCreateEmergencyAdmission = async (e, requestData, shouldReserveBed, bedId) => {
+    e.preventDefault();
   const handleCreateEmergencyAdmission = async (requestData) => {
     setLoading(true);
 
     try {
       const { selectedBedId, ...requestPayload } = requestData;
       // Create bed request
+      const response = await axios.post(`${API_URL}/bed-requests`, requestData);
+      const createdRequest = response.data.request;
+
+      // If user wants to reserve a bed immediately, approve the request
+      if (shouldReserveBed && bedId) {
       const response = await axios.post(`${API_URL}/bed-requests`, requestPayload);
       const createdRequest = response.data.request;
 
       // If user wants to reserve a bed immediately, approve the request
       if (selectedBedId) {
         await axios.post(`${API_URL}/bed-requests/${createdRequest._id}/approve`, {
-          bedId: selectedBedId
+          bedId: bedId
         });
       }
 
+      setShowEmergencyModal(false);
+      fetchBedRequests();
+
+      if (shouldReserveBed && bedId) {
       setAvailableBeds([]);
       setShowEmergencyModal(false);
       fetchBedRequests();
@@ -312,6 +351,14 @@ function ICUManagerDashboard({
           >
             Emergency Admission
           </button>
+          {/* <button
+            className="theme-toggle"
+            onClick={playNotificationSound}
+            title="Test notification sound"
+            style={{ marginRight: '10px' }}
+          >
+            🔔
+          </button> */}
           <div className="user-info">
             <span className="user-name">{currentUser.name}</span>
             <span className="user-role">(Bed Manager)</span>
@@ -362,7 +409,6 @@ function ICUManagerDashboard({
                 minHeight={400}
                 enableWidth={true}
                 enableHeight={true}
-                storageKey="icu-alerts-width"
                 className="bed-manager-sidebar"
               >
                 <AlertPanel alerts={alerts} />
@@ -376,7 +422,6 @@ function ICUManagerDashboard({
                   minHeight={80}
                   enableWidth={true}
                   enableHeight={true}
-                  storageKey="icu-ward-filter-dimensions"
                   className="ward-filter-section-horizontal"
                 >
                   <label className="ward-filter-label">Filter by Ward:</label>
@@ -400,7 +445,6 @@ function ICUManagerDashboard({
                     minHeight={150}
                     enableWidth={true}
                     enableHeight={true}
-                    storageKey="icu-stats-dimensions"
                     className="stats-section-below-filter"
                   >
                     <Dashboard stats={filteredStats} />
@@ -414,7 +458,6 @@ function ICUManagerDashboard({
                     minHeight={250}
                     enableWidth={true}
                     enableHeight={true}
-                    storageKey="icu-capacity-graph-dimensions"
                     className="bed-capacity-graph-section"
                   >
                     <div className="graph-header">
@@ -604,7 +647,6 @@ function ICUManagerDashboard({
                   minHeight={300}
                   enableWidth={true}
                   enableHeight={true}
-                  storageKey="icu-beds-view-dimensions"
                   className="dashboard-main-beds"
                 >
                   <div className="beds-section-header">
@@ -627,7 +669,6 @@ function ICUManagerDashboard({
             minHeight={400}
             enableWidth={true}
             enableHeight={true}
-            storageKey="icu-requests-container-dimensions"
             className="requests-container"
           >
             <div className="requests-header">

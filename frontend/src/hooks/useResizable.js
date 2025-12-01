@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 
 /**
  * Custom hook to make any component resizable
+ * Dimensions reset on page refresh for a clean, professional look
  * @param {Object} options - Configuration options
  * @param {number} options.minWidth - Minimum width in pixels
  * @param {number} options.minHeight - Minimum height in pixels
@@ -9,7 +10,6 @@ import { useState, useEffect, useRef, useCallback } from 'react';
  * @param {number} options.maxHeight - Maximum height in pixels
  * @param {boolean} options.enableWidth - Enable width resizing
  * @param {boolean} options.enableHeight - Enable height resizing
- * @param {string} options.storageKey - LocalStorage key to persist size
  */
 export const useResizable = ({
   minWidth = 200,
@@ -18,24 +18,11 @@ export const useResizable = ({
   maxHeight = null,
   enableWidth = true,
   enableHeight = true,
-  storageKey = null,
 } = {}) => {
   const ref = useRef(null);
   const [isResizing, setIsResizing] = useState(false);
-  const [dimensions, setDimensions] = useState(() => {
-    // Load from localStorage if storageKey is provided
-    if (storageKey) {
-      const saved = localStorage.getItem(storageKey);
-      if (saved) {
-        try {
-          return JSON.parse(saved);
-        } catch (e) {
-          console.error('Failed to parse saved dimensions:', e);
-        }
-      }
-    }
-    return { width: null, height: null };
-  });
+  // Always start with null dimensions (default/natural size) on mount
+  const [dimensions, setDimensions] = useState({ width: null, height: null });
 
   const resizeState = useRef({
     isResizing: false,
@@ -45,40 +32,6 @@ export const useResizable = ({
     startWidth: 0,
     startHeight: 0,
   });
-
-  // Save to localStorage when dimensions change
-  useEffect(() => {
-    if (storageKey && (dimensions.width || dimensions.height)) {
-      localStorage.setItem(storageKey, JSON.stringify(dimensions));
-    }
-  }, [dimensions, storageKey]);
-
-  const startResize = useCallback((e, direction) => {
-    e.preventDefault();
-    e.stopPropagation();
-
-    if (!ref.current) return;
-
-    const rect = ref.current.getBoundingClientRect();
-    
-    resizeState.current = {
-      isResizing: true,
-      direction,
-      startX: e.clientX,
-      startY: e.clientY,
-      startWidth: rect.width,
-      startHeight: rect.height,
-    };
-
-    setIsResizing(true);
-
-    // Add event listeners
-    document.addEventListener('mousemove', handleResize);
-    document.addEventListener('mouseup', stopResize);
-    document.body.style.cursor = direction === 'right' ? 'ew-resize' : 
-                                  direction === 'bottom' ? 'ns-resize' : 
-                                  'nwse-resize';
-  }, []);
 
   const handleResize = useCallback((e) => {
     if (!resizeState.current.isResizing || !ref.current) return;
@@ -120,12 +73,36 @@ export const useResizable = ({
     document.body.style.cursor = '';
   }, [handleResize]);
 
+  const startResize = useCallback((e, direction) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (!ref.current) return;
+
+    const rect = ref.current.getBoundingClientRect();
+    
+    resizeState.current = {
+      isResizing: true,
+      direction,
+      startX: e.clientX,
+      startY: e.clientY,
+      startWidth: rect.width,
+      startHeight: rect.height,
+    };
+
+    setIsResizing(true);
+
+    // Add event listeners
+    document.addEventListener('mousemove', handleResize);
+    document.addEventListener('mouseup', stopResize);
+    document.body.style.cursor = direction === 'right' ? 'ew-resize' : 
+                                  direction === 'bottom' ? 'ns-resize' : 
+                                  'nwse-resize';
+  }, [handleResize, stopResize]);
+
   const resetSize = useCallback(() => {
     setDimensions({ width: null, height: null });
-    if (storageKey) {
-      localStorage.removeItem(storageKey);
-    }
-  }, [storageKey]);
+  }, []);
 
   // Cleanup on unmount
   useEffect(() => {

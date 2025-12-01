@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import EmergencyAdmission from './EmergencyAdmission';
+import ResizableCard from './ResizableCard';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
@@ -16,7 +17,54 @@ function ERStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socket 
   const [activeTab, setActiveTab] = useState('all'); // 'all', 'pending', 'approved', 'closed'
   const [selectedWard, setSelectedWard] = useState('All'); // Ward filter
   const [searchQuery, setSearchQuery] = useState(''); // Search by bed number or patient name
+  // eslint-disable-next-line no-unused-vars
   const [settings, setSettings] = useState(null);
+
+  // Play notification sound function
+  const playNotificationSound = () => {
+    try {
+      // Create an AudioContext for better browser support
+      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      
+      // Create a more pleasant notification sound with multiple tones
+      const playTone = (frequency, startTime, duration, volume = 0.15) => {
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        
+        oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(frequency, startTime);
+        
+        // Smooth fade in and out for better sound quality
+        gainNode.gain.setValueAtTime(0, startTime);
+        gainNode.gain.linearRampToValueAtTime(volume, startTime + 0.01);
+        gainNode.gain.linearRampToValueAtTime(volume * 0.8, startTime + duration - 0.05);
+        gainNode.gain.linearRampToValueAtTime(0, startTime + duration);
+        
+        oscillator.start(startTime);
+        oscillator.stop(startTime + duration);
+      };
+      
+      // Create a pleasant three-tone ascending notification (like a modern app notification)
+      const now = audioContext.currentTime;
+      playTone(523.25, now, 0.15, 0.12);        // C5 - first note
+      playTone(659.25, now + 0.12, 0.15, 0.14); // E5 - second note
+      playTone(783.99, now + 0.24, 0.25, 0.16); // G5 - third note (longer, slightly louder)
+
+    } catch (error) {
+      console.log('Audio notification not available:', error);
+      // Fallback: try to play mp3 if it exists
+      try {
+        const audio = new Audio('/notification.mp3');
+        audio.volume = 0.5;
+        audio.play().catch(e => console.log('Audio play failed:', e));
+      } catch (e) {
+        console.log('Audio fallback failed');
+      }
+    }
+  };
 
   useEffect(() => {
     fetchRequests();
@@ -54,12 +102,7 @@ function ERStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socket 
       setShowNotification(true);
 
       // Play notification sound
-      try {
-        const audio = new Audio('/notification.mp3');
-        audio.play().catch(e => console.log('Audio play failed:', e));
-      } catch (e) {
-        console.log('Audio not available');
-      }
+      playNotificationSound();
     });
 
     socket.on('bed-request-denied', (request) => {
@@ -74,12 +117,7 @@ function ERStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socket 
       setShowNotification(true);
 
       // Play notification sound
-      try {
-        const audio = new Audio('/notification.mp3');
-        audio.play().catch(e => console.log('Audio play failed:', e));
-      } catch (e) {
-        console.log('Audio not available');
-      }
+      playNotificationSound();
     });
 
     socket.on('bed-request-fulfilled', (request) => {
@@ -102,12 +140,12 @@ function ERStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socket 
 
     return () => {
       socket.off('bed-request-approved');
-  socket.off('bed-request-denied');
-  socket.off('bed-request-fulfilled');
+      socket.off('bed-request-denied');
+      socket.off('bed-request-fulfilled');
       socket.off('bed-updated');
       socket.off('bed-request-deleted');
     };
-  }, [socket]);
+  }, [socket]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchRequests = async () => {
     try {
@@ -201,19 +239,26 @@ function ERStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socket 
     }
   };
 
+  const handleCreateRequest = async (e, requestData, shouldReserveBed, bedId) => {
+    e.preventDefault();
   const handleCreateRequest = async (requestData) => {
     setLoading(true);
 
     try {
       const { selectedBedId, ...requestPayload } = requestData;
       // Create bed request
+      const response = await axios.post(`${API_URL}/bed-requests`, requestData);
+      const createdRequest = response.data.request;
+
+      // If user wants to reserve a bed immediately, approve the request
+      if (shouldReserveBed && bedId) {
       const response = await axios.post(`${API_URL}/bed-requests`, requestPayload);
       const createdRequest = response.data.request;
 
       // If user wants to reserve a bed immediately, approve the request
       if (selectedBedId) {
         await axios.post(`${API_URL}/bed-requests/${createdRequest._id}/approve`, {
-          bedId: selectedBedId
+          bedId: bedId
         });
       }
 
@@ -222,6 +267,7 @@ function ERStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socket 
       fetchRequests();
       fetchStats();
 
+      if (shouldReserveBed && bedId) {
       if (selectedBedId) {
         alert('✓ Bed request created and bed reserved successfully!');
       }
@@ -347,64 +393,87 @@ function ERStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socket 
 
       <div className="er-main-content">
         {/* Ward Filter */}
-        <div className="ward-filter-section">
-          <label>Filter by Ward:</label>
-          <div className="ward-buttons">
-            {['All', 'Emergency', 'ICU', 'General Ward', 'Cardiology'].map((ward) => (
-              <button
-                key={ward}
-                className={`ward-filter-btn ${selectedWard === ward ? 'active' : ''}`}
-                onClick={() => setSelectedWard(ward)}
-              >
-                {ward}
-              </button>
-            ))}
+        <ResizableCard
+          title="Ward Filter"
+          minWidth={300}
+          minHeight={100}
+        >
+          <div className="ward-filter-section">
+            <label>Filter by Ward:</label>
+            <div className="ward-buttons">
+              {['All', 'Emergency', 'ICU', 'General Ward', 'Cardiology'].map((ward) => (
+                <button
+                  key={ward}
+                  className={`ward-filter-btn ${selectedWard === ward ? 'active' : ''}`}
+                  onClick={() => setSelectedWard(ward)}
+                >
+                  {ward}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
+        </ResizableCard>
 
         {/* Occupancy Rate - Above Availability Summary */}
         {filteredAvailability && (
-          <div className="occupancy-rate-section">
-            <h3>Occupancy Rate{selectedWard !== 'All' ? ` - ${selectedWard}` : ' (Hospital-wide)'}</h3>
-            <div className="occupancy-rate-display">
-              <span className={`occupancy-rate-value ${filteredAvailability.occupancyRate >= 90 ? 'critical' : filteredAvailability.occupancyRate >= 80 ? 'warning' : 'normal'}`}>
-                {filteredAvailability.occupancyRate}%
-              </span>
+          <ResizableCard
+            title="Occupancy Rate"
+            minWidth={300}
+            minHeight={120}
+          >
+            <div className="occupancy-rate-section">
+              <h3>Occupancy Rate{selectedWard !== 'All' ? ` - ${selectedWard}` : ' (Hospital-wide)'}</h3>
+              <div className="occupancy-rate-display">
+                <span className={`occupancy-rate-value ${filteredAvailability.occupancyRate >= 90 ? 'critical' : filteredAvailability.occupancyRate >= 80 ? 'warning' : 'normal'}`}>
+                  {filteredAvailability.occupancyRate}%
+                </span>
+              </div>
             </div>
-          </div>
+          </ResizableCard>
         )}
 
         {/* Availability Summary */}
         {filteredAvailability && (
-          <div className="availability-summary">
-            <h3>Current Bed Availability{selectedWard !== 'All' ? ` - ${selectedWard}` : ' (Hospital-wide)'}</h3>
-            <div className="availability-grid">
-              <div className="availability-item">
-                <span className="availability-label">Total Beds:</span>
-                <span className="availability-value total">{filteredAvailability.totalBeds}</span>
-              </div>
-              <div className="availability-item">
-                <span className="availability-label">Available Beds:</span>
-                <span className="availability-value available">{filteredAvailability.available}</span>
-              </div>
-              <div className="availability-item">
-                <span className="availability-label">Occupied:</span>
-                <span className="availability-value occupied">{filteredAvailability.occupied}</span>
-              </div>
-              <div className="availability-item">
-                <span className="availability-label">Under Cleaning:</span>
-                <span className="availability-value cleaning">{filteredAvailability.cleaning}</span>
-              </div>
-              <div className="availability-item">
-                <span className="availability-label">Reserved:</span>
-                <span className="availability-value reserved">{filteredAvailability.reserved}</span>
+          <ResizableCard
+            title="Current Bed Availability"
+            minWidth={400}
+            minHeight={150}
+          >
+            <div className="availability-summary">
+              <h3>Current Bed Availability{selectedWard !== 'All' ? ` - ${selectedWard}` : ' (Hospital-wide)'}</h3>
+              <div className="availability-grid">
+                <div className="availability-item">
+                  <span className="availability-label">Total Beds:</span>
+                  <span className="availability-value total">{filteredAvailability.totalBeds}</span>
+                </div>
+                <div className="availability-item">
+                  <span className="availability-label">Available Beds:</span>
+                  <span className="availability-value available">{filteredAvailability.available}</span>
+                </div>
+                <div className="availability-item">
+                  <span className="availability-label">Occupied:</span>
+                  <span className="availability-value occupied">{filteredAvailability.occupied}</span>
+                </div>
+                <div className="availability-item">
+                  <span className="availability-label">Under Cleaning:</span>
+                  <span className="availability-value cleaning">{filteredAvailability.cleaning}</span>
+                </div>
+                <div className="availability-item">
+                  <span className="availability-label">Reserved:</span>
+                  <span className="availability-value reserved">{filteredAvailability.reserved}</span>
+                </div>
               </div>
             </div>
-          </div>
+          </ResizableCard>
         )}
 
         {/* Request Queue */}
-        <div className="requests-section">
+        <ResizableCard
+          title="My Bed Requests"
+          minWidth={500}
+          minHeight={300}
+        >
+          <div className="requests-section">
           <div className="section-header">
             <h2>My Bed Requests</h2>
             <p>Track status of all your bed requests</p>
@@ -582,7 +651,8 @@ function ERStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socket 
               })}
             </div>
           )}
-        </div>
+          </div>
+        </ResizableCard>
       </div>
 
       {/* Create Request Modal */}

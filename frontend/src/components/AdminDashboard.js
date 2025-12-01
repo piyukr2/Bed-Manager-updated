@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import Dashboard from './Dashboard';
+import ResizableCard from './ResizableCard';
 // import OccupancyChart from './OccupancyChart';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, LineChart, Line, XAxis, YAxis, CartesianGrid, ReferenceLine } from 'recharts';
 
@@ -60,6 +61,7 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
     return `${hourValue.toString().padStart(2, '0')}:00`;
   };
 
+  // eslint-disable-next-line no-unused-vars
   const renderRequestStatusLabel = ({
     cx,
     cy,
@@ -1074,6 +1076,7 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
     }
   };
 
+  // eslint-disable-next-line no-unused-vars
   const trends = calculateTrends();
 
   const formatDateTime = (date) => {
@@ -1167,27 +1170,39 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
 
         {/* Ward Filter */}
         {activeTab !== 'settings' && (
-          <div className="ward-filter-section">
-            <label>Filter by Ward:</label>
-            <div className="ward-buttons">
-              {['All', 'Emergency', 'ICU', 'General Ward', 'Cardiology'].map((ward) => (
-                <button
-                  key={ward}
-                  className={`ward-filter-btn ${selectedWard === ward ? 'active' : ''}`}
-                  onClick={() => setSelectedWard(ward)}
-                >
-                  {ward}
-                </button>
-              ))}
+          <ResizableCard
+            title="Ward Filter"
+            minWidth={300}
+            minHeight={80}
+          >
+            <div className="ward-filter-section">
+              <label>Filter by Ward:</label>
+              <div className="ward-buttons">
+                {['All', 'Emergency', 'ICU', 'General Ward', 'Cardiology'].map((ward) => (
+                  <button
+                    key={ward}
+                    className={`ward-filter-btn ${selectedWard === ward ? 'active' : ''}`}
+                    onClick={() => setSelectedWard(ward)}
+                  >
+                    {ward}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          </ResizableCard>
         )}
 
         {/* Overview Tab */}
         {activeTab === 'overview' && (
           <div className="overview-content">
             {filteredStats ? (
-              <Dashboard stats={filteredStats} />
+              <ResizableCard
+                title="Statistics Overview"
+                minWidth={400}
+                minHeight={200}
+              >
+                <Dashboard stats={filteredStats} />
+              </ResizableCard>
             ) : (
               <div style={{ padding: '2rem', textAlign: 'center' }}>
                 <p>Loading statistics...</p>
@@ -1760,8 +1775,13 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
         {/* Bed Requests Tab */}
         {activeTab === 'requests' && (
           <div className="requests-analytics-content">
-            {/* Period Filter for Bed Requests */}
-            <div className="period-selector">
+            <ResizableCard
+              title="Bed Requests Analytics"
+              minWidth={500}
+              minHeight={300}
+            >
+              {/* Period Filter for Bed Requests */}
+              <div className="period-selector">
               <h3>Bed Requests</h3>
               <div className="period-buttons">
                 <button
@@ -1934,6 +1954,7 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
                 </div>
               </div>
             )}
+            </ResizableCard>
           </div>
         )}
 
@@ -1948,7 +1969,12 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
                 </p>
               </div>
             ) : (
-            <div className="settings-section">
+            <ResizableCard
+              title="System Configuration"
+              minWidth={500}
+              minHeight={300}
+            >
+              <div className="settings-section">
               <h3>System Configuration</h3>
 
               <div className="settings-grid">
@@ -2273,7 +2299,8 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
                   </p>
                 </div>
               )}
-            </div>
+              </div>
+            </ResizableCard>
             )}
           </div>
         )}

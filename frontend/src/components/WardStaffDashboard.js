@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import ResizableCard from './ResizableCard';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
@@ -354,50 +355,61 @@ function WardStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socke
 
       <div className="ward-main-content">
         {/* Ward Filter and Search */}
-        <div className="ward-filter-section">
-          <div className="filter-row">
-            <div className="ward-filter-group">
-              <label>View Department:</label>
-              <div className="ward-buttons">
-                {['All', 'Emergency', 'ICU', 'General Ward', 'Cardiology'].map((ward) => (
-                  <button
-                    key={ward}
-                    className={`ward-filter-btn ${selectedWard === ward ? 'active' : ''}`}
-                    onClick={() => setSelectedWard(ward)}
-                  >
-                    {ward}
-                  </button>
-                ))}
+        <ResizableCard
+          title="Department Filter & Search"
+          minWidth={400}
+          minHeight={150}
+        >
+          <div className="ward-filter-section">
+            <div className="filter-row">
+              <div className="ward-filter-group">
+                <label>View Department:</label>
+                <div className="ward-buttons">
+                  {['All', 'Emergency', 'ICU', 'General Ward', 'Cardiology'].map((ward) => (
+                    <button
+                      key={ward}
+                      className={`ward-filter-btn ${selectedWard === ward ? 'active' : ''}`}
+                      onClick={() => setSelectedWard(ward)}
+                    >
+                      {ward}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
-            
-            <div className="search-group">
-              <label>Search Beds:</label>
-              <div className="search-input-wrapper">
-                <input
-                  type="text"
-                  className="search-input"
-                  placeholder="Search by bed number, patient, location, equipment..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                />
-                {searchQuery && (
-                  <button 
-                    className="clear-search-btn"
-                    onClick={() => setSearchQuery('')}
-                    title="Clear search"
-                  >
-                    ✕
-                  </button>
-                )}
+              
+              <div className="search-group">
+                <label>Search Beds:</label>
+                <div className="search-input-wrapper">
+                  <input
+                    type="text"
+                    className="search-input"
+                    placeholder="Search by bed number, patient, location, equipment..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                  />
+                  {searchQuery && (
+                    <button 
+                      className="clear-search-btn"
+                      onClick={() => setSearchQuery('')}
+                      title="Clear search"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           </div>
-        </div>
+        </ResizableCard>
 
         {/* Stats Summary */}
         {filteredStats && (
-          <div className="stats-summary ward-stats">
+          <ResizableCard
+            title="Bed Statistics"
+            minWidth={500}
+            minHeight={120}
+          >
+            <div className="stats-summary ward-stats">
             <div 
               className={`stat-card stat-total ${selectedStatus === 'all' ? 'active' : ''}`}
               onClick={() => setSelectedStatus('all')}
@@ -443,11 +455,17 @@ function WardStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socke
               <div className="stat-value">{filteredStats.reserved || 0}</div>
               <div className="stat-description">Incoming patients</div>
             </div>
-          </div>
+            </div>
+          </ResizableCard>
         )}
 
         {reservedBeds.filter(bed => selectedWard === 'All' || bed.ward === selectedWard).length > 0 && (
-              <div className="reservations-section">
+          <ResizableCard
+            title="Incoming Reservations"
+            minWidth={400}
+            minHeight={200}
+          >
+            <div className="reservations-section">
                 <div className="section-header">
                   <h2>Incoming Reservations</h2>
                   <span className="badge">{reservedBeds.filter(bed => selectedWard === 'All' || bed.ward === selectedWard).length}</span>
@@ -474,10 +492,16 @@ function WardStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socke
                     </div>
                   ))}
                 </div>
-              </div>
-            )}
+            </div>
+          </ResizableCard>
+        )}
 
-            <div className="bed-board-section">
+        <ResizableCard
+          title="Bed Status Board"
+          minWidth={600}
+          minHeight={400}
+        >
+          <div className="bed-board-section">
               <div className="section-header">
                 <h2>Bed Status Board</h2>
                 <p>
@@ -621,7 +645,8 @@ function WardStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socke
                 ))}
               </div>
               )}
-            </div>
+          </div>
+        </ResizableCard>
 
       </div>
 
