@@ -18,6 +18,7 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
   const [settings, setSettings] = useState(null);
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [selectedWard, setSelectedWard] = useState('All');
+  const [todayHourlySource, setTodayHourlySource] = useState(null);
 
   // Seed data import state
   const [seedFile, setSeedFile] = useState(null);
@@ -28,6 +29,36 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
 
   // Chart options
   const [showMaxOccupancy, setShowMaxOccupancy] = useState(true);
+
+  const hasHourlyData = (record) => Array.isArray(record?.hourlyData) && record.hourlyData.length > 0;
+
+  const findHistoryRecordForDate = (records, targetDate) => {
+    if (!records || records.length === 0 || !targetDate) return null;
+    const targetDateString = targetDate.toDateString();
+    return records.find(record => {
+      if (!record?.timestamp) return false;
+      return new Date(record.timestamp).toDateString() === targetDateString;
+    }) || null;
+  };
+
+  const findLatestHourlyRecord = (records) => {
+    if (!records || records.length === 0) return null;
+    for (let i = records.length - 1; i >= 0; i -= 1) {
+      if (hasHourlyData(records[i])) {
+        return records[i];
+      }
+    }
+    return null;
+  };
+
+  const getHourLabel = (hourData) => {
+    const hourValue = typeof hourData?.hour === 'number'
+      ? hourData.hour
+      : hourData?.timestamp
+        ? new Date(hourData.timestamp).getHours()
+        : 0;
+    return `${hourValue.toString().padStart(2, '0')}:00`;
+  };
 
   const renderRequestStatusLabel = ({
     cx,
@@ -204,13 +235,62 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
 
   const fetchHistory = async () => {
     try {
-      const effectivePeriod = period === 'today' ? '7d' : period;
+      const effectivePeriod = period;
       const response = await axios.get(`${API_URL}/beds/history?period=${effectivePeriod}`);
-      console.log('History fetched successfully:', response.data.length, 'records');
-      setHistory(response.data);
+      if (effectivePeriod !== period) {
+        return;
+      }
+
+      const historyData = response.data;
+      console.log('History fetched successfully:', historyData.length, 'records');
+      setHistory(historyData);
+
+      if (effectivePeriod === 'today') {
+        const todayRecord = findHistoryRecordForDate(historyData, new Date());
+
+        if (hasHourlyData(todayRecord)) {
+          setTodayHourlySource({
+            record: todayRecord,
+            isFallback: false,
+            fallbackDate: todayRecord?.timestamp || null
+          });
+        } else {
+          let fallbackRecord = findLatestHourlyRecord(historyData);
+
+          if (!fallbackRecord) {
+            try {
+              const fallbackResponse = await axios.get(`${API_URL}/beds/history?period=7d`);
+              if (effectivePeriod !== period) {
+                return;
+              }
+              fallbackRecord = findLatestHourlyRecord(fallbackResponse.data);
+            } catch (fallbackError) {
+              console.error('Error fetching fallback history:', fallbackError);
+            }
+          }
+
+          if (fallbackRecord) {
+            const isSameRecord = todayRecord && fallbackRecord && (
+              (todayRecord._id && fallbackRecord._id && todayRecord._id === fallbackRecord._id) ||
+              (todayRecord.timestamp && fallbackRecord.timestamp && todayRecord.timestamp === fallbackRecord.timestamp)
+            );
+            const isFallback = !isSameRecord;
+            setTodayHourlySource({
+              record: fallbackRecord,
+              isFallback,
+              fallbackDate: fallbackRecord?.timestamp || null
+            });
+          } else {
+            setTodayHourlySource(null);
+          }
+        }
+      } else {
+        setTodayHourlySource(null);
+      }
     } catch (error) {
       console.error('Error fetching history:', error);
       console.error('Error details:', error.response?.data);
+      setTodayHourlySource(null);
     }
   };
 
@@ -571,7 +651,7 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
 
   const filteredStats = getFilteredStats();
 
-  // Filter bed requests based on selected period
+  // Filter bed requests based on selected period and ward
   const getFilteredBedRequests = () => {
     if (!bedRequests || bedRequests.length === 0) return [];
 
@@ -588,7 +668,9 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
 
     return bedRequests.filter(request => {
       const createdAt = new Date(request.createdAt);
-      return createdAt >= startDate && createdAt <= now;
+      const matchesPeriod = createdAt >= startDate && createdAt <= now;
+      const matchesWard = selectedWard === 'All' || request.preferredWard === selectedWard;
+      return matchesPeriod && matchesWard;
     });
   };
 
@@ -700,6 +782,10 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
                 margin-top: 30px;
                 border-bottom: 2px solid #e2e8f0;
                 padding-bottom: 8px;
+                page-break-before: always;
+              }
+              h2:first-of-type {
+                page-break-before: auto;
               }
               .metadata {
                 background: #f8fafc;
@@ -762,7 +848,7 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
             <div class="metadata">
               <p><strong>Generated:</strong> ${new Date(reportData.generatedAt).toLocaleString()}</p>
               <p><strong>Generated By:</strong> ${reportData.generatedBy}</p>
-              <p><strong>Period:</strong> ${reportPeriod === 'today' ? 'Today' : reportPeriod === '7d' ? '7 Days' : '30 Days'}</p>
+              <p><strong>Period:</strong> ${reportPeriod === '1' || reportPeriod === 'today' ? 'Today' : reportPeriod === '7' || reportPeriod === '7d' ? 'Last 7 Days' : 'Last 30 Days'}</p>
             </div>
 
             <h2>Overall Statistics</h2>
@@ -821,6 +907,81 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
               </tbody>
             </table>
 
+            ${reportPeriod === '1' || reportPeriod === 'today' ? (() => {
+              // Get today's history record with hourly data
+              const todayRecord = reportHistory.find(h => {
+                const recordDate = new Date(h.timestamp);
+                const today = new Date();
+                return recordDate.toDateString() === today.toDateString();
+              });
+
+              if (!todayRecord || !todayRecord.hourlyData || todayRecord.hourlyData.length === 0) {
+                return '';
+              }
+
+              return `
+                <h2>Today's Hourly Occupancy</h2>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Hour</th>
+                      <th>Average Occupancy Rate</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${todayRecord.hourlyData.map(hourData => {
+                      const hour = new Date(hourData.timestamp).getHours();
+                      const occupancy = parseFloat(hourData.occupancyRate);
+                      const status = occupancy >= 90 ? 'Critical' : occupancy >= 80 ? 'Warning' : 'Normal';
+                      const statusColor = occupancy >= 90 ? '#ef4444' : occupancy >= 80 ? '#f59e0b' : '#10b981';
+                      return `
+                        <tr>
+                          <td>${hour.toString().padStart(2, '0')}:00</td>
+                          <td>${occupancy.toFixed(1)}%</td>
+                          <td style="color: ${statusColor}; font-weight: 600;">${status}</td>
+                        </tr>
+                      `;
+                    }).join('')}
+                  </tbody>
+                </table>
+                <p style="margin-top: 15px; font-size: 13px; color: #64748b;">
+                  <strong>Note:</strong> This report shows hourly occupancy data. To view the line chart, please use the Analytics & Trends tab in the application.
+                </p>
+              `;
+            })() : `
+              <h2>Daily Average Occupancy (${reportPeriod === '7d' ? 'Last 7 Days' : 'Last 30 Days'})</h2>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Average Occupancy Rate</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${reportHistory
+                    .slice(reportPeriod === '7d' ? -7 : -30)
+                    .reverse()
+                    .map(record => {
+                      const occupancy = parseFloat(record.occupancyRate);
+                      const status = occupancy >= 90 ? 'Critical' : occupancy >= 80 ? 'Warning' : 'Normal';
+                      const statusColor = occupancy >= 90 ? '#ef4444' : occupancy >= 80 ? '#f59e0b' : '#10b981';
+                      return `
+                        <tr>
+                          <td>${new Date(record.timestamp).toLocaleDateString()}</td>
+                          <td>${occupancy.toFixed(1)}%</td>
+                          <td style="color: ${statusColor}; font-weight: 600;">${status}</td>
+                        </tr>
+                      `;
+                    }).join('')}
+                </tbody>
+              </table>
+              <p style="margin-top: 15px; font-size: 13px; color: #64748b;">
+                <strong>Note:</strong> This report shows daily occupancy data. To view the line chart, please use the Analytics & Trends tab in the application.
+              </p>
+            `}
+
             <p class="no-print" style="margin-top: 30px; text-align: center; color: #64748b;">
               <button onclick="window.print()" style="padding: 10px 20px; background: #0284c7; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px;">Print / Save as PDF</button>
               <button onclick="window.close()" style="padding: 10px 20px; background: #64748b; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; margin-left: 10px;">Close</button>
@@ -849,7 +1010,8 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
         URL.revokeObjectURL(url);
       } else if (format === 'csv') {
         // Convert stats to CSV
-        let csv = 'Metric,Value\n';
+        let csv = '"Overall Statistics"\n';
+        csv += 'Metric,Value\n';
         csv += `Total Beds,${stats.totalBeds}\n`;
         csv += `Occupied,${stats.occupied}\n`;
         csv += `Available,${stats.available}\n`;
@@ -857,10 +1019,46 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
         csv += `Reserved,${stats.reserved}\n`;
         csv += `Occupancy Rate,${stats.occupancyRate}%\n\n`;
 
+        csv += '"Ward Statistics"\n';
         csv += 'Ward,Total,Occupied,Available,Cleaning\n';
         stats.wardStats.forEach(ward => {
           csv += `${ward._id},${ward.total},${ward.occupied},${ward.available},${ward.cleaning}\n`;
         });
+
+        // Add occupancy data based on report period
+        csv += '\n';
+        if (reportPeriod === 'today') {
+          // Get today's history record with hourly data
+          const todayRecord = reportHistory.find(h => {
+            const recordDate = new Date(h.timestamp);
+            const today = new Date();
+            return recordDate.toDateString() === today.toDateString();
+          });
+
+          if (todayRecord && todayRecord.hourlyData && todayRecord.hourlyData.length > 0) {
+            csv += '"Today\'s Hourly Occupancy"\n';
+            csv += 'Hour,Average Occupancy Rate,Status\n';
+            todayRecord.hourlyData.forEach(hourData => {
+              const hourLabel = getHourLabel(hourData);
+              const occupancy = parseFloat(hourData.occupancyRate);
+              const status = occupancy >= 90 ? 'Critical' : occupancy >= 80 ? 'Warning' : 'Normal';
+              csv += `${hourLabel},${occupancy.toFixed(1)}%,${status}\n`;
+            });
+          }
+        } else {
+          csv += `"Daily Average Occupancy (${reportPeriod === '7d' ? 'Last 7 Days' : 'Last 30 Days'})"\n`;
+          csv += 'Date,Average Occupancy Rate,Status\n';
+          reportHistory
+            .slice(reportPeriod === '7d' ? -7 : -30)
+            .reverse()
+            .forEach(record => {
+              const occupancy = parseFloat(record.occupancyRate);
+              const status = occupancy >= 90 ? 'Critical' : occupancy >= 80 ? 'Warning' : 'Normal';
+              csv += `${new Date(record.timestamp).toLocaleDateString()},${occupancy.toFixed(1)}%,${status}\n`;
+            });
+        }
+
+        csv += '\n"Note: To view the line chart, please use the Analytics & Trends tab in the application."\n';
 
         const csvBlob = new Blob([csv], { type: 'text/csv' });
         const url = URL.createObjectURL(csvBlob);
@@ -1061,14 +1259,10 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
                       : wardForecasts.filter(f => f.ward === selectedWard);
 
                     if (relevantForecasts.length > 0) {
-                      const summary = relevantForecasts
-                        .map(f => `${f.ward}: current ${f.current}% → projected ${f.projected}% (${f.trend})`)
-                        .join('; ');
-
                       suggestionsToRender = [{
                         type: 'opportunity',
                         targetWard: selectedWard === 'All' ? 'All' : selectedWard,
-                        message: `No urgent reallocations detected. Continue monitoring${selectedWard === 'All' ? ' overall capacity' : ` ${selectedWard} ward`} and keep contingency plans ready. Snapshot: ${summary}.`
+                        message: `No urgent reallocations detected. Continue monitoring${selectedWard === 'All' ? ' overall capacity' : ` ${selectedWard} ward`} and keep contingency plans ready.`
                       }];
                     } else {
                       suggestionsToRender = [{
@@ -1088,12 +1282,6 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
                           {displayForecasts.map(forecast => (
                             <div key={forecast.ward} className="forecast-card">
                               <h4>{selectedWard === 'All' ? forecast.ward : 'Next 24 Hours Projection'}</h4>
-                              <p className="forecast-trend-text">
-                                Based on current trends ({forecast.trend}), occupancy is expected to{' '}
-                                {forecast.trend === 'increasing' && 'increase'}
-                                {forecast.trend === 'decreasing' && 'decrease'}
-                                {forecast.trend === 'stable' && 'remain stable'}.
-                              </p>
                               <div className="forecast-values">
                                 <div className="forecast-value">
                                   <span className="forecast-label">Current:</span>
@@ -1168,6 +1356,173 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
                 })()}
               </div>
             )}
+
+            {/* Hourly Occupancy Graph for Today */}
+            {period === 'today' && (() => {
+              const hourlyRecord = todayHourlySource?.record;
+
+              if (!hourlyRecord || !hasHourlyData(hourlyRecord)) {
+                return (
+                  <div className="daily-occupancy-section">
+                    <div className="chart-header">
+                      <h3>Today's Hourly Occupancy {selectedWard !== 'All' && `- ${selectedWard}`}</h3>
+                    </div>
+                    <p style={{ marginTop: '0.5rem', color: 'var(--text-quiet)' }}>
+                      Hourly occupancy measurements aren't available yet. Data will appear here once the system collects the first hourly samples for today.
+                    </p>
+                  </div>
+                );
+              }
+
+              const hourlyChartData = hourlyRecord.hourlyData.map(hourData => {
+                const hourLabel = getHourLabel(hourData);
+                let avgOccupancy = parseFloat(hourData.occupancyRate);
+                let maxOccupancy = avgOccupancy;
+
+                if (selectedWard !== 'All' && hourData.wardStats && Array.isArray(hourData.wardStats)) {
+                  const wardData = hourData.wardStats.find(w => w.ward === selectedWard);
+                  if (wardData) {
+                    avgOccupancy = parseFloat(wardData.occupancyRate);
+                    maxOccupancy = avgOccupancy;
+                  }
+                } else if (hourData.wardStats && Array.isArray(hourData.wardStats)) {
+                  const wardOccupancies = hourData.wardStats.map(w => parseFloat(w.occupancyRate));
+                  maxOccupancy = Math.max(...wardOccupancies, avgOccupancy);
+                }
+
+                return {
+                  hour: hourLabel,
+                  avgOccupancy: parseFloat(avgOccupancy.toFixed(1)),
+                  maxOccupancy: parseFloat(maxOccupancy.toFixed(1))
+                };
+              });
+
+              const fallbackNote = todayHourlySource?.isFallback
+                ? `Showing the latest hourly data from ${todayHourlySource.fallbackDate ? formatDate(todayHourlySource.fallbackDate) : 'previous records'} while today’s readings are generated.`
+                : null;
+
+              return (
+                <div className="daily-occupancy-section">
+                  <div className="chart-header">
+                    <h3>Today's Hourly Occupancy {selectedWard !== 'All' && `- ${selectedWard}`}</h3>
+                    <div className="chart-options">
+                      <label className="chart-option-toggle">
+                        <input
+                          type="checkbox"
+                          checked={showMaxOccupancy}
+                          onChange={(e) => setShowMaxOccupancy(e.target.checked)}
+                        />
+                        <span>Show Max Occupancy</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  {fallbackNote && (
+                    <div
+                      style={{
+                        marginBottom: '0.75rem',
+                        padding: '0.65rem 0.9rem',
+                        borderRadius: '0.75rem',
+                        background: theme === 'dark' ? 'rgba(255,255,255,0.04)' : 'rgba(15,23,42,0.04)',
+                        border: theme === 'dark' ? '1px solid rgba(148,163,184,0.25)' : '1px solid rgba(15,23,42,0.08)',
+                        color: 'var(--text-quiet)'
+                      }}
+                    >
+                      {fallbackNote}
+                    </div>
+                  )}
+
+                  <div className="chart-legend-custom">
+                    <div className="legend-item">
+                      <span className="legend-color" style={{ backgroundColor: '#0284c7' }}></span>
+                      <span>Average Occupancy</span>
+                    </div>
+                    {showMaxOccupancy && (
+                      <div className="legend-item">
+                        <span className="legend-color" style={{ backgroundColor: '#f59e0b' }}></span>
+                        <span>Max Occupancy</span>
+                      </div>
+                    )}
+                    <div className="legend-item">
+                      <span className="legend-line" style={{ backgroundColor: '#ef4444' }}></span>
+                      <span>Critical Threshold ({settings?.thresholds?.criticalThreshold || 90}%)</span>
+                    </div>
+                  </div>
+
+                  <ResponsiveContainer width="100%" height={300}>
+                    <LineChart
+                      data={hourlyChartData}
+                      margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(148, 163, 184, 0.15)" />
+                      <XAxis
+                        dataKey="hour"
+                        stroke="var(--text-quiet)"
+                        tick={{ fill: 'var(--text-quiet)', fontSize: 12 }}
+                      />
+                      <YAxis
+                        stroke="var(--text-quiet)"
+                        tick={{ fill: 'var(--text-quiet)', fontSize: 12 }}
+                        domain={[0, 100]}
+                        label={{ value: 'Occupancy %', angle: -90, position: 'insideLeft', fill: 'var(--text-quiet)' }}
+                      />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: theme === 'dark' ? '#1e293b' : '#ffffff',
+                          border: `1px solid ${theme === 'dark' ? '#475569' : '#e2e8f0'}`,
+                          borderRadius: '10px',
+                          padding: '8px 12px'
+                        }}
+                        labelStyle={{
+                          color: theme === 'dark' ? '#f1f5f9' : '#0f172a'
+                        }}
+                        itemStyle={{
+                          color: theme === 'dark' ? '#f1f5f9' : '#0f172a'
+                        }}
+                        formatter={(value, name) => [
+                          `${value}%`,
+                          name === 'avgOccupancy' ? 'Average' : 'Max'
+                        ]}
+                      />
+                      <ReferenceLine
+                        y={settings?.thresholds?.criticalThreshold || 90}
+                        stroke="#ef4444"
+                        strokeWidth={2}
+                        strokeDasharray="8 4"
+                        label={{
+                          value: `Critical: ${settings?.thresholds?.criticalThreshold || 90}%`,
+                          position: 'right',
+                          fill: '#ef4444',
+                          fontSize: 11,
+                          fontWeight: 500
+                        }}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="avgOccupancy"
+                        name="avgOccupancy"
+                        stroke="#0284c7"
+                        strokeWidth={2}
+                        dot={{ fill: '#0284c7', r: 4 }}
+                        activeDot={{ r: 6 }}
+                      />
+                      {showMaxOccupancy && (
+                        <Line
+                          type="monotone"
+                          dataKey="maxOccupancy"
+                          name="maxOccupancy"
+                          stroke="#f59e0b"
+                          strokeWidth={2}
+                          strokeDasharray="5 3"
+                          dot={{ fill: '#f59e0b', r: 3 }}
+                          activeDot={{ r: 5 }}
+                        />
+                      )}
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              );
+            })()}
 
             {/* Daily Average Percentage Occupancy Graph */}
             {period !== 'today' && (
@@ -1255,11 +1610,16 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
                     />
                     <Tooltip
                       contentStyle={{
-                        backgroundColor: 'var(--surface-card)',
-                        border: '1px solid var(--border-soft)',
+                        backgroundColor: theme === 'dark' ? '#1e293b' : '#ffffff',
+                        border: `1px solid ${theme === 'dark' ? '#475569' : '#e2e8f0'}`,
                         borderRadius: '10px',
-                        color: 'var(--text-primary)',
                         padding: '8px 12px'
+                      }}
+                      labelStyle={{
+                        color: theme === 'dark' ? '#f1f5f9' : '#0f172a'
+                      }}
+                      itemStyle={{
+                        color: theme === 'dark' ? '#f1f5f9' : '#0f172a'
                       }}
                       formatter={(value, name) => [
                         `${value}%`,
@@ -1320,8 +1680,8 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
                     <thead>
                       <tr>
                         <th>Date</th>
-                        <th>Daily Average Occupancy Rate</th>
-                        <th>Max Occupancy Rate of the Day</th>
+                        <th>Average hourly-occupancy rate</th>
+                        <th>Max Hourly-Occupancy Rate of the Day</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1455,62 +1815,57 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
             {requestStats && (
               <div className="request-status-pie-chart-section">
                 <h3>Request Status Distribution</h3>
-                <ResponsiveContainer width="100%" height={300}>
-                  <PieChart>
-                    <Pie
-                      data={[
-                        { name: 'Pending', value: filteredRequestStats.pending || 0, color: '#f59e0b' },
-                        { name: 'Approved', value: filteredRequestStats.approved || 0, color: '#10b981' },
-                        { name: 'Denied', value: filteredRequestStats.denied || 0, color: '#ef4444' }
-                      ]}
-                      cx="50%"
-                      cy="50%"
-                      labelLine={false}
-                      label={({ name, value, percent }) => `${name}: ${value} (${(percent * 100).toFixed(0)}%)`}
-                      outerRadius={80}
-                      fill="#8884d8"
-                      dataKey="value"
-                    >
-                      {[
-                        { name: 'Pending', value: filteredRequestStats.pending || 0, color: '#f59e0b' },
-                        { name: 'Approved', value: filteredRequestStats.approved || 0, color: '#10b981' },
-                        { name: 'Denied', value: filteredRequestStats.denied || 0, color: '#ef4444' }
-                      ].map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.color} />
-                      ))}
-                    </Pie>
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: 'var(--surface-card)',
-                        border: '1px solid var(--border-soft)',
-                        borderRadius: '10px',
-                        color: 'var(--text-primary)',
-                        padding: '8px 12px'
-                      }}
-                    />
-                    <Legend />
-                  </PieChart>
-                </ResponsiveContainer>
+                {filteredRequestStats.total > 0 ? (
+                  <ResponsiveContainer width="100%" height={300}>
+                    <PieChart>
+                      <Pie
+                        data={[
+                          { name: 'Pending', value: filteredRequestStats.pending || 0, color: '#f59e0b' },
+                          { name: 'Approved', value: filteredRequestStats.approved || 0, color: '#10b981' },
+                          { name: 'Denied', value: filteredRequestStats.denied || 0, color: '#ef4444' }
+                        ]}
+                        cx="50%"
+                        cy="50%"
+                        labelLine={false}
+                        label={({ name, value, percent }) => `${name}: ${value} (${(percent * 100).toFixed(0)}%)`}
+                        outerRadius={80}
+                        fill="#8884d8"
+                        dataKey="value"
+                      >
+                        {[
+                          { name: 'Pending', value: filteredRequestStats.pending || 0, color: '#f59e0b' },
+                          { name: 'Approved', value: filteredRequestStats.approved || 0, color: '#10b981' },
+                          { name: 'Denied', value: filteredRequestStats.denied || 0, color: '#ef4444' }
+                        ].map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: theme === 'dark' ? '#1e293b' : '#ffffff',
+                          border: `1px solid ${theme === 'dark' ? '#475569' : '#e2e8f0'}`,
+                          borderRadius: '10px',
+                          padding: '8px 12px'
+                        }}
+                        labelStyle={{
+                          color: theme === 'dark' ? '#f1f5f9' : '#0f172a'
+                        }}
+                        itemStyle={{
+                          color: theme === 'dark' ? '#f1f5f9' : '#0f172a'
+                        }}
+                      />
+                      <Legend />
+                    </PieChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div style={{ padding: '2rem', textAlign: 'center' }}>
+                    <p>No bed requests found for the selected period.</p>
+                  </div>
+                )}
               </div>
             )}
 
-            {filteredRequestStats.triageStats && filteredRequestStats.triageStats.length > 0 && (
-              <div className="triage-breakdown">
-                <h3>Requests by Triage Level</h3>
-                <div className="triage-stats-grid">
-                  {filteredRequestStats.triageStats.map((triage) => (
-                    <div key={triage._id} className="triage-stat-card">
-                      <div className={`triage-badge triage-${triage._id.toLowerCase()}`}>
-                        {triage._id}
-                      </div>
-                      <div className="triage-count">{triage.count}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {filteredBedRequests.length === 0 && requestStats && (
+            {filteredBedRequests.length === 0 && requestStats && filteredRequestStats.total > 0 && (
               <div style={{ padding: '2rem', textAlign: 'center' }}>
                 <p>No bed requests found for the selected period.</p>
               </div>
@@ -1538,7 +1893,6 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
                     </thead>
                     <tbody>
                       {filteredBedRequests
-                        .filter(request => selectedWard === 'All' || request.preferredWard === selectedWard)
                         .slice(0, 100)
                         .map((request) => (
                         <tr key={request._id}>
@@ -1564,6 +1918,22 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
                 </div>
               </div>
             )}
+
+            {filteredRequestStats.triageStats && filteredRequestStats.triageStats.length > 0 && (
+              <div className="triage-breakdown">
+                <h3>Requests by Triage Level</h3>
+                <div className="triage-stats-grid">
+                  {filteredRequestStats.triageStats.map((triage) => (
+                    <div key={triage._id} className="triage-stat-card">
+                      <div className={`triage-badge triage-${triage._id.toLowerCase()}`}>
+                        {triage._id}
+                      </div>
+                      <div className="triage-count">{triage.count}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -1580,15 +1950,12 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
             ) : (
             <div className="settings-section">
               <h3>System Configuration</h3>
-              <p className="settings-description">
-                Configure occupancy thresholds, reporting parameters, and system policies.
-              </p>
 
               <div className="settings-grid">
                 <div className="setting-card">
                   <h4>Occupancy Alert Thresholds</h4>
                   <div className="setting-item">
-                    <label>Warning Threshold (Yellow):</label>
+                    <label>Warning Threshold (Yellow)</label>
                     <input
                       type="number"
                       value={settings.thresholds?.warningThreshold || 80}
@@ -1605,7 +1972,7 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
                     <span className="setting-unit">%</span>
                   </div>
                   <div className="setting-item">
-                    <label>Critical Threshold (Red):</label>
+                    <label>Critical Threshold (Red)</label>
                     <input
                       type="number"
                       value={settings.thresholds?.criticalThreshold || 90}
@@ -1625,47 +1992,51 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
 
                 <div className="setting-card">
                   <h4>Reporting Configuration</h4>
-                  <div className="setting-item">
-                    <label>Default Report Period:</label>
-                    <select
-                      value={settings.reporting?.defaultPeriod || 'today'}
-                      onChange={(e) => setSettings({
-                        ...settings,
-                        reporting: {
-                          ...settings.reporting,
-                          defaultPeriod: e.target.value
-                        }
-                      })}
-                    >
-                      <option value="today">Today</option>
-                      <option value="7d">7 Days</option>
-                      <option value="30d">30 Days</option>
-                    </select>
+                  <div className="setting-item setting-item-inline">
+                    <label>Default Report Period</label>
+                    <div className="setting-input-inline">
+                      <select
+                        value={settings.reporting?.defaultPeriod || '1'}
+                        onChange={(e) => setSettings({
+                          ...settings,
+                          reporting: {
+                            ...settings.reporting,
+                            defaultPeriod: e.target.value
+                          }
+                        })}
+                      >
+                        {[1, 7, 30].map(option => (
+                          <option key={option} value={option.toString()}>{option}</option>
+                        ))}
+                      </select>
+                      <span className="setting-unit setting-unit-inline">Days</span>
+                    </div>
                   </div>
-                  <div className="setting-item">
-                    <label>Auto-refresh Interval:</label>
-                    <input
-                      type="number"
-                      value={settings.reporting?.autoRefreshInterval || 60}
-                      onChange={(e) => setSettings({
-                        ...settings,
-                        reporting: {
-                          ...settings.reporting,
-                          autoRefreshInterval: parseInt(e.target.value)
-                        }
-                      })}
-                      min="10"
-                      max="300"
-                    />
-                    <span className="setting-unit">seconds</span>
+                  <div className="setting-item setting-item-inline">
+                    <label>Auto-refresh Interval</label>
+                    <div className="setting-input-inline">
+                      <input
+                        type="number"
+                        value={settings.reporting?.autoRefreshInterval || 60}
+                        onChange={(e) => setSettings({
+                          ...settings,
+                          reporting: {
+                            ...settings.reporting,
+                            autoRefreshInterval: parseInt(e.target.value)
+                          }
+                        })}
+                        min="10"
+                        max="300"
+                      />
+                      <span className="setting-unit setting-unit-inline">seconds</span>
+                    </div>
                   </div>
                 </div>
 
                 <div className="setting-card">
                   <h4>Ward Bed Capacity</h4>
-                  <p className="setting-description-small">Configure the number of beds in each ward. Changes will be reflected across all dashboards.</p>
                   <div className="setting-item">
-                    <label>Emergency Ward Beds:</label>
+                    <label>Emergency Ward</label>
                     <input
                       type="number"
                       value={settings.wardCapacity?.Emergency || 15}
@@ -1682,7 +2053,7 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
                     <span className="setting-unit">beds</span>
                   </div>
                   <div className="setting-item">
-                    <label>ICU Beds:</label>
+                    <label>ICU</label>
                     <input
                       type="number"
                       value={settings.wardCapacity?.ICU || 15}
@@ -1699,7 +2070,7 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
                     <span className="setting-unit">beds</span>
                   </div>
                   <div className="setting-item">
-                    <label>General Ward Beds:</label>
+                    <label>General Ward</label>
                     <input
                       type="number"
                       value={settings.wardCapacity?.['General Ward'] || 15}
@@ -1716,7 +2087,7 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
                     <span className="setting-unit">beds</span>
                   </div>
                   <div className="setting-item">
-                    <label>Cardiology Beds:</label>
+                    <label>Cardiology</label>
                     <input
                       type="number"
                       value={settings.wardCapacity?.Cardiology || 15}
@@ -1738,9 +2109,6 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
               {/* Seed Data Import Section */}
               <div className="seed-import-section">
                 <h3>Import Historical Data</h3>
-                <p className="settings-description">
-                  Load historical patient and occupancy data from a JSON seed file. New records will be added while duplicates are skipped.
-                </p>
 
                 <div className="seed-import-container">
                   <div className="seed-file-upload">
