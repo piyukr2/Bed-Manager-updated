@@ -227,7 +227,7 @@ function EmergencyAdmission({
               </div>
             </div>
 
-            {showBedReservation && (
+            {/* {showBedReservation && (
               <>
                 <div className="form-group">
                   <label className="checkbox-label">
@@ -270,7 +270,7 @@ function EmergencyAdmission({
                   </div>
                 )}
               </>
-            )}
+            )} */}
 
             <div className="form-group">
               <label>Expected Time of Arrival</label>

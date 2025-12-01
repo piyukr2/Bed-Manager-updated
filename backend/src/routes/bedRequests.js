@@ -17,8 +17,9 @@ const authorize = (...roles) => {
   };
 };
 
-// Create a new bed request (ER Staff)
-router.post('/', authorize('er_staff', 'admin'), async (req, res) => {
+// Create a new bed request (ER Staff and ICU Manager)
+// router.post('/', authorize('er_staff', 'icu_manager', 'admin'), async (req, res) => {
+router.post('/', authorize('er_staff', 'icu_manager'), async (req, res) => {
   try {
     const { patientDetails, preferredWard, eta } = req.body;
 

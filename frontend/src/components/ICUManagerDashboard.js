@@ -289,32 +289,101 @@ function ICUManagerDashboard({
     }
   };
 
-  const handleCreateEmergencyAdmission = async (requestData) => {
+  // Memoized chart data to ensure updates when stats change
+  const chartData = React.useMemo(() => {
+    const wardNames = ['Emergency', 'ICU', 'General Ward', 'Cardiology'];
+    
+    const chartResult = wardNames.map(wardName => {
+      // Try to get data from stats first
+      const wardData = stats?.wardStats?.find(w => w._id === wardName);
+      
+      // Fallback: calculate from beds array if stats is not available or incomplete
+      if (!wardData || (!wardData.reserved && beds)) {
+        const wardBeds = beds.filter(bed => bed.ward === wardName);
+        const occupied = wardBeds.filter(bed => bed.status === 'occupied').length;
+        const available = wardBeds.filter(bed => bed.status === 'available').length;
+        const cleaning = wardBeds.filter(bed => bed.status === 'cleaning').length;
+        const reserved = wardBeds.filter(bed => bed.status === 'reserved').length;
+        const total = occupied + available + cleaning + reserved;
+        const occupancyRate = total > 0 ? ((occupied / total) * 100).toFixed(0) : 0;
+        
+        return {
+          name: wardName,
+          total,
+          occupied,
+          available,
+          cleaning,
+          reserved,
+          occupancyRate
+        };
+      }
+      
+      // Use stats data
+      const occupied = wardData?.occupied || 0;
+      const available = wardData?.available || 0;
+      const cleaning = wardData?.cleaning || 0;
+      const reserved = wardData?.reserved || 0;
+      const total = occupied + available + cleaning + reserved;
+      const occupancyRate = total > 0 ? ((occupied / total) * 100).toFixed(0) : 0;
+      
+      return {
+        name: wardName,
+        total,
+        occupied,
+        available,
+        cleaning,
+        reserved,
+        occupancyRate
+      };
+    });
+    
+    return chartResult;
+  }, [stats, beds]);
+
+  const handleCreateEmergencyAdmission = async (e, newRequest, reserveBed, selectedBedId) => {
     setLoading(true);
 
     try {
-      const { selectedBedId, ...requestPayload } = requestData;
+      // Add authorization header explicitly
+      const token = localStorage.getItem('token');
+      const config = {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      };
+      
+      // Create bed request payload
+      const requestPayload = {
+        patientDetails: newRequest.patientDetails,
+        preferredWard: newRequest.preferredWard,
+        eta: newRequest.eta
+      };
+      
       // Create bed request
-      const response = await axios.post(`${API_URL}/bed-requests`, requestPayload);
+      const response = await axios.post(`${API_URL}/bed-requests`, requestPayload, config);
       const createdRequest = response.data.request;
 
       // If user wants to reserve a bed immediately, approve the request
-      if (selectedBedId) {
+      if (reserveBed && selectedBedId) {
         await axios.post(`${API_URL}/bed-requests/${createdRequest._id}/approve`, {
           bedId: selectedBedId
-        });
+        }, config);
       }
 
       setAvailableBeds([]);
       setShowEmergencyModal(false);
       fetchBedRequests();
 
-      if (selectedBedId) {
-        alert('✓ Emergency admission created and bed reserved successfully!');
-      }
+      // if (reserveBed && selectedBedId) {
+      //   alert('✓ Emergency admission created and bed reserved successfully!');
+      // } else {
+      //   alert('✓ Emergency admission request created successfully!');
+      // }
     } catch (error) {
       console.error('Error creating emergency admission:', error);
-      alert(error.response?.data?.error || 'Failed to create emergency admission');
+      const errorMessage = error.response?.data?.error || error.response?.data?.message || 'Failed to create emergency admission';
+      alert(`Error: ${errorMessage}`);
     } finally {
       setLoading(false);
     }
@@ -460,6 +529,14 @@ function ICUManagerDashboard({
                           <span>Occupied</span>
                         </div>
                         <div className="legend-item">
+                          <span className="legend-dot" style={{ background: 'linear-gradient(135deg, #3b82f6, #2563eb)' }}></span>
+                          <span>Reserved</span>
+                        </div>
+                        <div className="legend-item">
+                          <span className="legend-dot" style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)' }}></span>
+                          <span>Cleaning</span>
+                        </div>
+                        <div className="legend-item">
                           <span className="legend-dot available"></span>
                           <span>Available</span>
                         </div>
@@ -471,28 +548,8 @@ function ICUManagerDashboard({
                     </div>
                     <ResponsiveContainer width="100%" height={350}>
                       <BarChart
-                        data={(() => {
-                          const wardNames = ['Emergency', 'ICU', 'General Ward', 'Cardiology'];
-                          return wardNames.map(wardName => {
-                            const wardData = stats.wardStats?.find(w => w._id === wardName);
-                            const occupied = wardData?.occupied || 0;
-                            const available = wardData?.available || 0;
-                            const cleaning = wardData?.cleaning || 0;
-                            const reserved = wardData?.reserved || 0;
-                            const total = occupied + available + cleaning + reserved;
-                            const occupancyRate = total > 0 ? ((occupied / total) * 100).toFixed(0) : 0;
-                            
-                            return {
-                              name: wardName,
-                              total,
-                              occupied,
-                              available,
-                              cleaning,
-                              reserved,
-                              occupancyRate
-                            };
-                          });
-                        })()}
+                        key={JSON.stringify(chartData)}
+                        data={chartData}
                         margin={{ top: 30, right: 40, left: 20, bottom: 30 }}
                         barGap={8}
                         barCategoryGap="25%"
@@ -505,6 +562,14 @@ function ICUManagerDashboard({
                           <linearGradient id="availableGradient" x1="0" y1="0" x2="0" y2="1">
                             <stop offset="0%" stopColor="#10b981" stopOpacity={0.9}/>
                             <stop offset="100%" stopColor="#059669" stopOpacity={1}/>
+                          </linearGradient>
+                          <linearGradient id="reservedGradient" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.9}/>
+                            <stop offset="100%" stopColor="#2563eb" stopOpacity={1}/>
+                          </linearGradient>
+                          <linearGradient id="cleaningGradient" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#f59e0b" stopOpacity={0.9}/>
+                            <stop offset="100%" stopColor="#d97706" stopOpacity={1}/>
                           </linearGradient>
                         </defs>
                         <CartesianGrid 
@@ -610,6 +675,25 @@ function ICUManagerDashboard({
                           animationBegin={0}
                         />
                         <Bar 
+                          dataKey="reserved" 
+                          stackId="a" 
+                          fill="url(#reservedGradient)" 
+                          name="Reserved"
+                          radius={[0, 0, 0, 0]}
+                          animationDuration={800}
+                          animationBegin={100}
+                          minPointSize={2}
+                        />
+                        <Bar 
+                          dataKey="cleaning" 
+                          stackId="a" 
+                          fill="url(#cleaningGradient)" 
+                          name="Cleaning"
+                          radius={[0, 0, 0, 0]}
+                          animationDuration={800}
+                          animationBegin={150}
+                        />
+                        <Bar 
                           dataKey="available" 
                           stackId="a" 
                           fill="url(#availableGradient)" 
@@ -678,9 +762,9 @@ function ICUManagerDashboard({
                     <div className="request-card-header">
                       <div>
                         <span className="request-id-large">{request.requestId}</span>
-                        <span className="request-reason-badge">
+                        {/* <span className="request-reason-badge">
                           {request.patientDetails.reasonForAdmission}
-                        </span>
+                        </span> */}
                       </div>
                       <div className="request-meta">
                         <small>Requested by {request.createdBy.name}</small>
@@ -786,11 +870,8 @@ function ICUManagerDashboard({
 
             <div className="modal-body">
               <div className="patient-summary">
-                <h3>{selectedRequest.patientDetails.name}</h3>
-                <span className="request-reason-badge">
-                  {selectedRequest.patientDetails.reasonForAdmission}
-                </span>
-                <p>{selectedRequest.patientDetails.reasonForAdmission}</p>
+                <h2>Name : {selectedRequest.patientDetails.name}</h2>
+                <p>Reason: {selectedRequest.patientDetails.reasonForAdmission}</p>
                 <div className="requirements">
                   <span className="requirement-tag">Equipment: {selectedRequest.patientDetails.requiredEquipment}</span>
                   <span className="requirement-tag">Ward: {selectedRequest.preferredWard || 'Any'}</span>
