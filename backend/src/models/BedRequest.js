@@ -16,11 +16,6 @@ const bedRequestSchema = new mongoose.Schema({
     age: { type: Number, required: true, min: 0, max: 150 },
     gender: { type: String, enum: ['Male', 'Female', 'Other'], required: true },
     contactNumber: String,
-    triageLevel: {
-      type: String,
-      enum: ['Critical', 'Urgent', 'Semi-Urgent', 'Non-Urgent'],
-      required: true
-    },
     reasonForAdmission: { type: String, required: true },
     requiredEquipment: {
       type: String,
@@ -33,7 +28,7 @@ const bedRequestSchema = new mongoose.Schema({
   eta: Date, // Expected time of arrival
   status: {
     type: String,
-    enum: ['pending', 'approved', 'denied', 'fulfilled', 'cancelled'],
+    enum: ['pending', 'approved', 'denied'],
     default: 'pending',
     index: true
   },
@@ -49,7 +44,6 @@ const bedRequestSchema = new mongoose.Schema({
     reviewedAt: Date
   },
   denialReason: String,
-  notes: String,
   priority: {
     type: Number,
     default: 3, // 1=lowest, 5=highest
@@ -87,15 +81,6 @@ bedRequestSchema.pre('save', async function(next) {
   if (!this.requestId) {
     const count = await mongoose.model('BedRequest').countDocuments();
     this.requestId = `REQ-${String(count + 1).padStart(6, '0')}`;
-  }
-
-  // Set priority based on triage level
-  if (this.patientDetails.triageLevel === 'Critical') {
-    this.priority = 5;
-  } else if (this.patientDetails.triageLevel === 'Urgent' || this.patientDetails.triageLevel === 'Semi-Urgent') {
-    this.priority = 3;
-  } else {
-    this.priority = 2;
   }
 
   next();
