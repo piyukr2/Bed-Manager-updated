@@ -17,8 +17,7 @@ function EmergencyAdmission({
   submitButtonText = "🚨 Submit Request",
   showBedReservation = true,
   availableBeds = [],
-  onFetchBeds = null,
-  getTriageLevelClass = null
+  onFetchBeds = null
 }) {
   const [newRequest, setNewRequest] = useState({
     patientDetails: {
@@ -26,14 +25,12 @@ function EmergencyAdmission({
       age: '',
       gender: 'Male',
       contactNumber: '',
-      triageLevel: 'Urgent',
       reasonForAdmission: '',
       requiredEquipment: 'Standard',
       estimatedStay: 24
     },
     preferredWard: 'ICU',
-    eta: '',
-    notes: ''
+    eta: ''
   });
 
   const [reserveBed, setReserveBed] = useState(false);
@@ -51,6 +48,10 @@ function EmergencyAdmission({
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    if (reserveBed && !selectedBedId) {
+      alert('Select a bed to reserve or turn off reservation.');
+      return;
+    }
     
     // Pass the event and the request data to parent
     onSubmit(e, newRequest, reserveBed, selectedBedId);
@@ -62,14 +63,12 @@ function EmergencyAdmission({
         age: '',
         gender: 'Male',
         contactNumber: '',
-        triageLevel: 'Urgent',
         reasonForAdmission: '',
         requiredEquipment: 'Standard',
         estimatedStay: 24
       },
       preferredWard: 'ICU',
-      eta: '',
-      notes: ''
+      eta: ''
     });
     setReserveBed(false);
     setSelectedBedId('');
@@ -83,14 +82,12 @@ function EmergencyAdmission({
         age: '',
         gender: 'Male',
         contactNumber: '',
-        triageLevel: 'Urgent',
         reasonForAdmission: '',
         requiredEquipment: 'Standard',
         estimatedStay: 24
       },
       preferredWard: 'ICU',
-      eta: '',
-      notes: ''
+      eta: ''
     });
     setReserveBed(false);
     setSelectedBedId('');
@@ -171,19 +168,6 @@ function EmergencyAdmission({
 
             <div className="form-row">
               <div className="form-group">
-                <label>Triage Level *</label>
-                <select
-                  required
-                  value={newRequest.patientDetails.triageLevel}
-                  onChange={(e) => handleChange('triageLevel', e.target.value)}
-                  className={getTriageLevelClass ? `triage-select ${getTriageLevelClass(newRequest.patientDetails.triageLevel)}` : 'triage-select'}
-                >
-                  <option value="Urgent">Urgent</option>
-                  <option value="Not Urgent">Not Urgent</option>
-                </select>
-              </div>
-
-              <div className="form-group">
                 <label>Required Equipment *</label>
                 <select
                   required
@@ -243,7 +227,6 @@ function EmergencyAdmission({
               </div>
             </div>
 
-            {/* Bed Reservation Option
             {showBedReservation && (
               <>
                 <div className="form-group">
@@ -275,7 +258,7 @@ function EmergencyAdmission({
                       <option value="">-- Select a bed --</option>
                       {availableBeds.map((bed) => (
                         <option key={bed._id} value={bed._id}>
-                          {bed.bedNumber} - {bed.ward} (Floor {bed.location.floor}, {bed.equipmentType})
+                          {bed.bedNumber} - {bed.ward} ({bed.location ? `Floor ${bed.location.floor}` : 'Location N/A'}, {bed.equipmentType})
                         </option>
                       ))}
                     </select>
@@ -287,7 +270,7 @@ function EmergencyAdmission({
                   </div>
                 )}
               </>
-            )} */}
+            )}
 
             <div className="form-group">
               <label>Expected Time of Arrival</label>
@@ -298,15 +281,6 @@ function EmergencyAdmission({
               />
             </div>
 
-            <div className="form-group">
-              <label>Additional Notes</label>
-              <textarea
-                rows="2"
-                value={newRequest.notes}
-                onChange={(e) => setNewRequest({ ...newRequest, notes: e.target.value })}
-                placeholder="Any additional information"
-              />
-            </div>
           </div>
 
           {/* Form Actions */}

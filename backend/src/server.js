@@ -147,63 +147,6 @@ async function createDefaultUsers() {
   }
 }
 
-// Function to create default cleaning staff
-async function createDefaultCleaningStaff() {
-  try {
-    const CleaningStaff = require('./models/CleaningStaff');
-    
-    console.log('\n' + '='.repeat(50));
-    console.log('🧹 Checking Cleaning Staff...');
-    console.log('='.repeat(50));
-    
-    const existingCount = await CleaningStaff.countDocuments();
-    
-    if (existingCount >= 10) {
-      console.log(`ℹ️  ${existingCount} cleaning staff members already exist`);
-      console.log('='.repeat(50) + '\n');
-      return;
-    }
-    
-    const staffNames = [
-      'Rajesh Kumar', 'Priya Sharma', 'Amit Patel', 'Sunita Devi',
-      'Mohan Singh', 'Kavita Reddy', 'Ramesh Yadav', 'Anita Gupta',
-      'Suresh Joshi', 'Meena Verma'
-    ];
-    
-    let created = 0;
-    
-    for (let i = 0; i < 10; i++) {
-      const staffId = `CS${String(i + 1).padStart(3, '0')}`;
-      const existing = await CleaningStaff.findOne({ staffId });
-      
-      if (!existing) {
-        await CleaningStaff.create({
-          staffId,
-          name: staffNames[i],
-          status: 'available',
-          activeJobsCount: 0,
-          totalJobsCompleted: 0
-        });
-        console.log(`✅ Created cleaning staff: ${staffId} - ${staffNames[i]}`);
-        created++;
-      }
-    }
-    
-    if (created > 0) {
-      console.log('='.repeat(50));
-      console.log(`📊 Summary: ${created} cleaning staff created`);
-      console.log('='.repeat(50) + '\n');
-      console.log('🎉 Cleaning staff are ready!');
-      console.log('');
-    } else {
-      console.log('='.repeat(50) + '\n');
-    }
-    
-  } catch (error) {
-    console.error('❌ Error creating cleaning staff:', error.message);
-  }
-}
-
 // MongoDB Connection
 mongoose.connect(MONGODB_URI, {
   useNewUrlParser: true,
@@ -226,7 +169,6 @@ mongoose.connect(MONGODB_URI, {
   }
   
   await createDefaultUsers();
-  await createDefaultCleaningStaff();
 })
 .catch(err => {
   console.error('❌ MongoDB connection error:', err.message);
@@ -415,12 +357,6 @@ app.use('/api/bed-requests', authenticateToken, bedRequestRoutes);
 const systemSettingsRoutes = require('./routes/systemSettings');
 app.use('/api/settings', authenticateToken, systemSettingsRoutes);
 
-// Cleaning management routes
-const cleaningJobRoutes = require('./routes/cleaningJobs');
-const cleaningStaffRoutes = require('./routes/cleaningStaff');
-app.use('/api/cleaning-jobs', authenticateToken, cleaningJobRoutes);
-app.use('/api/cleaning-staff', authenticateToken, cleaningStaffRoutes);
-
 // Seed data import routes (Admin only)
 const { router: seedRoutes, initializeModels: initSeedModels } = require('./routes/seedRoutes');
 const Bed = require('./models/Bed');
@@ -428,10 +364,9 @@ const Patient = require('./models/Patient');
 const OccupancyHistory = require('./models/OccupancyHistory');
 const Alert = require('./models/Alert');
 const CleaningJob = require('./models/CleaningJob');
-const CleaningStaff = require('./models/CleaningStaff');
 
 // Initialize seed routes with models
-initSeedModels({ Bed, Patient, OccupancyHistory, Alert, CleaningJob, CleaningStaff });
+initSeedModels({ Bed, Patient, OccupancyHistory, Alert, CleaningJob });
 
 // Admin-only middleware for seed routes
 const adminOnly = (req, res, next) => {

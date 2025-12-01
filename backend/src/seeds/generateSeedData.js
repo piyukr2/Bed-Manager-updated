@@ -21,7 +21,6 @@ const CONFIG = {
   AVG_OCCUPANCY_RATE: 0.70,
   PEAK_HOURS: [9, 10, 11, 14, 15, 16],
   PATIENT_STATUSES: ['admitted', 'critical', 'stable', 'recovering', 'discharged'],
-  TRIAGE_LEVELS: ['Critical', 'Urgent', 'Semi-Urgent', 'Non-Urgent'],
   GENDERS: ['Male', 'Female', 'Other']
 };
 
@@ -278,7 +277,7 @@ function generateOccupancyHistory(beds, daysOfHistory) {
 
     const wardStats = CONFIG.WARDS.map(ward => {
       const wardBeds = ward.beds;
-      const wardOccupied = Math.round(wardBeds * occupancyRate * (0.8 + Math.random() * 0.4));
+  const wardOccupied = Math.round(wardBeds * occupancyRate * (0.8 + Math.random() * 0.4));
       const wardCleaning = randomInt(0, 2);
       const wardReserved = randomInt(0, 1);
       const wardAvailable = Math.max(0, wardBeds - wardOccupied - wardCleaning - wardReserved);

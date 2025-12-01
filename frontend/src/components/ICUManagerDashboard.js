@@ -162,7 +162,7 @@ function ICUManagerDashboard({
       const response = await axios.post(`${API_URL}/beds/recommend`, {
         ward: request.preferredWard,
         equipmentType: request.patientDetails.requiredEquipment,
-        urgency: request.patientDetails.triageLevel === 'Urgent' ? 'high' : 'normal'
+        urgency: 'normal'
       });
 
       if (response.data.bed) {
@@ -291,15 +291,22 @@ function ICUManagerDashboard({
 
   const handleCreateEmergencyAdmission = async (e, requestData, shouldReserveBed, bedId) => {
     e.preventDefault();
+  const handleCreateEmergencyAdmission = async (requestData) => {
     setLoading(true);
 
     try {
+      const { selectedBedId, ...requestPayload } = requestData;
       // Create bed request
       const response = await axios.post(`${API_URL}/bed-requests`, requestData);
       const createdRequest = response.data.request;
 
       // If user wants to reserve a bed immediately, approve the request
       if (shouldReserveBed && bedId) {
+      const response = await axios.post(`${API_URL}/bed-requests`, requestPayload);
+      const createdRequest = response.data.request;
+
+      // If user wants to reserve a bed immediately, approve the request
+      if (selectedBedId) {
         await axios.post(`${API_URL}/bed-requests/${createdRequest._id}/approve`, {
           bedId: bedId
         });
@@ -309,6 +316,11 @@ function ICUManagerDashboard({
       fetchBedRequests();
 
       if (shouldReserveBed && bedId) {
+      setAvailableBeds([]);
+      setShowEmergencyModal(false);
+      fetchBedRequests();
+
+      if (selectedBedId) {
         alert('✓ Emergency admission created and bed reserved successfully!');
       }
     } catch (error) {
@@ -317,14 +329,6 @@ function ICUManagerDashboard({
     } finally {
       setLoading(false);
     }
-  };
-
-  const getTriageLevelClass = (level) => {
-    const classes = {
-      Urgent: 'triage-urgent',
-      'Not Urgent': 'triage-non-urgent'
-    };
-    return classes[level] || '';
   };
 
   return (
@@ -685,8 +689,8 @@ function ICUManagerDashboard({
                     <div className="request-card-header">
                       <div>
                         <span className="request-id-large">{request.requestId}</span>
-                        <span className={`triage-badge ${getTriageLevelClass(request.patientDetails.triageLevel)}`}>
-                          {request.patientDetails.triageLevel}
+                        <span className="request-reason-badge">
+                          {request.patientDetails.reasonForAdmission}
                         </span>
                       </div>
                       <div className="request-meta">
@@ -740,12 +744,6 @@ function ICUManagerDashboard({
                         </div>
                       </div>
 
-                      {request.notes && (
-                        <div className="info-section">
-                          <h4>Notes</h4>
-                          <p className="request-notes">{request.notes}</p>
-                        </div>
-                      )}
                     </div>
 
                     <div className="request-card-actions">
@@ -774,7 +772,10 @@ function ICUManagerDashboard({
       {showEmergencyModal && (
         <EmergencyAdmission
           isOpen={showEmergencyModal}
-          onClose={() => setShowEmergencyModal(false)}
+          onClose={() => {
+            setShowEmergencyModal(false);
+            setAvailableBeds([]);
+          }}
           onSubmit={handleCreateEmergencyAdmission}
           loading={loading}
           title="🚨 Emergency Admission"
@@ -782,7 +783,6 @@ function ICUManagerDashboard({
           showBedReservation={true}
           availableBeds={availableBeds}
           onFetchBeds={fetchAvailableBeds}
-          getTriageLevelClass={getTriageLevelClass}
         />
       )}
 
@@ -798,8 +798,8 @@ function ICUManagerDashboard({
             <div className="modal-body">
               <div className="patient-summary">
                 <h3>{selectedRequest.patientDetails.name}</h3>
-                <span className={`triage-badge ${getTriageLevelClass(selectedRequest.patientDetails.triageLevel)}`}>
-                  {selectedRequest.patientDetails.triageLevel}
+                <span className="request-reason-badge">
+                  {selectedRequest.patientDetails.reasonForAdmission}
                 </span>
                 <p>{selectedRequest.patientDetails.reasonForAdmission}</p>
                 <div className="requirements">
@@ -907,10 +907,8 @@ function ICUManagerDashboard({
                 <span className="detail-value">{newRequestNotification.patientDetails?.name}</span>
               </div>
               <div className="notification-detail">
-                <span className="detail-label">Triage Level:</span>
-                <span className={`triage-badge triage-${newRequestNotification.patientDetails?.triageLevel?.toLowerCase()}`}>
-                  {newRequestNotification.patientDetails?.triageLevel}
-                </span>
+                <span className="detail-label">Reason:</span>
+                <span className="detail-value">{newRequestNotification.patientDetails?.reasonForAdmission}</span>
               </div>
               <div className="notification-detail">
                 <span className="detail-label">Ward Preference:</span>
@@ -920,10 +918,10 @@ function ICUManagerDashboard({
                 <span className="detail-label">Requested by:</span>
                 <span className="detail-value">{newRequestNotification.createdBy?.name}</span>
               </div>
-              {newRequestNotification.patientDetails?.reasonForAdmission && (
+              {newRequestNotification.patientDetails?.requiredEquipment && (
                 <div className="notification-detail-full">
-                  <span className="detail-label">Reason:</span>
-                  <p className="detail-description">{newRequestNotification.patientDetails.reasonForAdmission}</p>
+                  <span className="detail-label">Equipment:</span>
+                  <p className="detail-description">{newRequestNotification.patientDetails.requiredEquipment}</p>
                 </div>
               )}
             </div>

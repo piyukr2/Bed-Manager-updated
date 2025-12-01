@@ -5,6 +5,8 @@ const Bed = require('../models/Bed');
 const Patient = require('../models/Patient');
 const Alert = require('../models/Alert');
 
+const ALLOWED_STATUSES = ['pending', 'approved', 'denied'];
+
 // Role-based authorization middleware
 const authorize = (...roles) => {
   return (req, res, next) => {
@@ -18,11 +20,11 @@ const authorize = (...roles) => {
 // Create a new bed request (ER Staff)
 router.post('/', authorize('er_staff', 'admin'), async (req, res) => {
   try {
-    const { patientDetails, preferredWard, eta, notes } = req.body;
+    const { patientDetails, preferredWard, eta } = req.body;
 
     // Validate required fields
-    if (!patientDetails || !patientDetails.name || !patientDetails.triageLevel) {
-      return res.status(400).json({ error: 'Patient details with name and triage level are required' });
+    if (!patientDetails || !patientDetails.name) {
+      return res.status(400).json({ error: 'Patient details with name are required' });
     }
 
     const bedRequest = new BedRequest({
@@ -34,7 +36,6 @@ router.post('/', authorize('er_staff', 'admin'), async (req, res) => {
       patientDetails,
       preferredWard,
       eta: eta || new Date(Date.now() + 30 * 60 * 1000), // Default 30 minutes
-      notes,
       status: 'pending'
     });
 
@@ -46,7 +47,7 @@ router.post('/', authorize('er_staff', 'admin'), async (req, res) => {
     // Create alert for ICU managers
     await Alert.create({
       type: 'info',
-      message: `New ${patientDetails.triageLevel} bed request from ${req.user.name} (${bedRequest.requestId})`,
+      message: `New bed request from ${req.user.name} (${bedRequest.requestId})`,
       priority: bedRequest.priority,
       ward: preferredWard || 'All'
     });
@@ -64,7 +65,7 @@ router.post('/', authorize('er_staff', 'admin'), async (req, res) => {
 // Get all bed requests with filtering
 router.get('/', async (req, res) => {
   try {
-    const { status, triageLevel, createdBy, ward } = req.query;
+    const { status, createdBy, ward } = req.query;
     const query = { isDeleted: { $ne: true } }; // Exclude soft-deleted records
 
     // Role-based filtering
@@ -92,8 +93,7 @@ router.get('/', async (req, res) => {
     // Admin sees all
 
     // Apply query filters
-    if (status) query.status = status;
-    if (triageLevel) query['patientDetails.triageLevel'] = triageLevel;
+  if (status) query.status = status;
     if (createdBy) query['createdBy.username'] = createdBy;
     if (ward) query.preferredWard = ward;
 
@@ -124,23 +124,10 @@ router.get('/stats', async (req, res) => {
       ];
     }
 
-    const total = await BedRequest.countDocuments(query);
-    const pending = await BedRequest.countDocuments({ ...query, status: 'pending' });
-    const approved = await BedRequest.countDocuments({ ...query, status: 'approved' });
-    const fulfilled = await BedRequest.countDocuments({ ...query, status: 'fulfilled' });
-    const denied = await BedRequest.countDocuments({ ...query, status: 'denied' });
-    const cancelled = await BedRequest.countDocuments({ ...query, status: 'cancelled' });
-
-    // Triage level breakdown
-    const triageStats = await BedRequest.aggregate([
-      { $match: query },
-      {
-        $group: {
-          _id: '$patientDetails.triageLevel',
-          count: { $sum: 1 }
-        }
-      }
-    ]);
+  const total = await BedRequest.countDocuments(query);
+  const pending = await BedRequest.countDocuments({ ...query, status: 'pending' });
+  const approved = await BedRequest.countDocuments({ ...query, status: 'approved' });
+  const denied = await BedRequest.countDocuments({ ...query, status: 'denied' });
 
     // Ward-wise breakdown for ER staff
     const wardStats = await BedRequest.aggregate([
@@ -155,14 +142,8 @@ router.get('/stats', async (req, res) => {
           approved: {
             $sum: { $cond: [{ $eq: ['$status', 'approved'] }, 1, 0] }
           },
-          fulfilled: {
-            $sum: { $cond: [{ $eq: ['$status', 'fulfilled'] }, 1, 0] }
-          },
           denied: {
             $sum: { $cond: [{ $eq: ['$status', 'denied'] }, 1, 0] }
-          },
-          cancelled: {
-            $sum: { $cond: [{ $eq: ['$status', 'cancelled'] }, 1, 0] }
           }
         }
       }
@@ -175,9 +156,7 @@ router.get('/stats', async (req, res) => {
         total: ward.total,
         pending: ward.pending,
         approved: ward.approved,
-        fulfilled: ward.fulfilled,
-        denied: ward.denied,
-        cancelled: ward.cancelled
+        denied: ward.denied
       };
     });
 
@@ -185,10 +164,7 @@ router.get('/stats', async (req, res) => {
       total,
       pending,
       approved,
-      fulfilled,
       denied,
-      cancelled,
-      triageStats,
       byWard
     });
   } catch (error) {
@@ -224,7 +200,7 @@ router.get('/:id', async (req, res) => {
 // Approve and assign bed (ICU Manager)
 router.post('/:id/approve', authorize('icu_manager', 'admin'), async (req, res) => {
   try {
-    const { bedId, notes } = req.body;
+    const { bedId } = req.body;
 
     const request = await BedRequest.findById(req.params.id);
     if (!request) {
@@ -266,8 +242,6 @@ router.post('/:id/approve', authorize('icu_manager', 'admin'), async (req, res) 
       name: req.user.name,
       reviewedAt: new Date()
     };
-    if (notes) request.notes = (request.notes || '') + '\n' + notes;
-
     await request.save();
 
     // Emit socket events
@@ -377,7 +351,7 @@ router.post('/:id/fulfill', authorize('icu_manager', 'ward_staff', 'admin'), asy
       estimatedStay: request.patientDetails.estimatedStay || 24,
       admissionDate: new Date(),
       bedId: bed._id,
-      status: request.patientDetails.triageLevel === 'Critical' ? 'critical' : 'admitted'
+      status: 'admitted'
     });
 
     // Update bed status
@@ -387,19 +361,17 @@ router.post('/:id/fulfill', authorize('icu_manager', 'ward_staff', 'admin'), asy
     await bed.save();
 
     // Update request
-    request.status = 'fulfilled';
     request.fulfilledAt = new Date();
     await request.save();
 
-    // Emit socket events
-    req.io.emit('patient-admitted', patient);
-    req.io.emit('bed-updated', bed);
-    req.io.emit('bed-request-fulfilled', request);
+  // Emit socket events
+  req.io.emit('patient-admitted', patient);
+  req.io.emit('bed-updated', bed);
 
     // Create alert
     await Alert.create({
       type: 'success',
-      message: `Patient ${patient.name} admitted to bed ${bed.bedNumber} (Request ${request.requestId} fulfilled)`,
+      message: `Patient ${patient.name} admitted to bed ${bed.bedNumber} (Request ${request.requestId} approved)`,
       priority: 2,
       ward: bed.ward
     });
@@ -431,7 +403,7 @@ router.post('/:id/cancel', authorize('er_staff', 'icu_manager', 'admin'), async 
       return res.status(403).json({ error: 'Can only cancel your own requests' });
     }
 
-    if (['fulfilled', 'cancelled'].includes(request.status)) {
+    if (request.status !== 'pending') {
       return res.status(400).json({ error: `Cannot cancel request with status: ${request.status}` });
     }
 
@@ -446,18 +418,32 @@ router.post('/:id/cancel', authorize('er_staff', 'icu_manager', 'admin'), async 
       }
     }
 
-    request.status = 'cancelled';
+    request.status = 'denied';
     request.cancelledAt = new Date();
     request.cancelledBy = {
       userId: req.user.id,
       name: req.user.name,
       reason: reason || 'Cancelled by user'
     };
+    request.denialReason = reason || 'Cancelled by user';
+    request.reviewedBy = {
+      userId: req.user.id,
+      username: req.user.username,
+      name: req.user.name,
+      reviewedAt: new Date()
+    };
 
     await request.save();
 
     // Emit socket event
-    req.io.emit('bed-request-cancelled', request);
+    req.io.emit('bed-request-denied', request);
+
+    await Alert.create({
+      type: 'warning',
+      message: `Bed request ${request.requestId} cancelled by ${req.user.name}`,
+      priority: 2,
+      ward: request.preferredWard || 'All'
+    });
 
     res.json({
       message: 'Bed request cancelled',
@@ -472,7 +458,7 @@ router.post('/:id/cancel', authorize('er_staff', 'icu_manager', 'admin'), async 
 // Update bed request (limited fields)
 router.put('/:id', async (req, res) => {
   try {
-    const { notes, eta } = req.body;
+    const { eta } = req.body;
 
     const request = await BedRequest.findById(req.params.id);
     if (!request) {
@@ -484,7 +470,6 @@ router.put('/:id', async (req, res) => {
       return res.status(403).json({ error: 'Can only update your own requests' });
     }
 
-    if (notes) request.notes = notes;
     if (eta) request.eta = eta;
 
     await request.save();

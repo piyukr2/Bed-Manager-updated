@@ -241,25 +241,34 @@ function ERStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socket 
 
   const handleCreateRequest = async (e, requestData, shouldReserveBed, bedId) => {
     e.preventDefault();
+  const handleCreateRequest = async (requestData) => {
     setLoading(true);
 
     try {
+      const { selectedBedId, ...requestPayload } = requestData;
       // Create bed request
       const response = await axios.post(`${API_URL}/bed-requests`, requestData);
       const createdRequest = response.data.request;
 
       // If user wants to reserve a bed immediately, approve the request
       if (shouldReserveBed && bedId) {
+      const response = await axios.post(`${API_URL}/bed-requests`, requestPayload);
+      const createdRequest = response.data.request;
+
+      // If user wants to reserve a bed immediately, approve the request
+      if (selectedBedId) {
         await axios.post(`${API_URL}/bed-requests/${createdRequest._id}/approve`, {
           bedId: bedId
         });
       }
 
+      setAvailableBeds([]);
       setShowCreateModal(false);
       fetchRequests();
       fetchStats();
 
       if (shouldReserveBed && bedId) {
+      if (selectedBedId) {
         alert('✓ Bed request created and bed reserved successfully!');
       }
     } catch (error) {
@@ -330,14 +339,6 @@ function ERStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socket 
   cancelled: 'status-badge-cancelled'
     };
     return classes[status] || 'status-badge-default';
-  };
-
-  const getTriageLevelClass = (level) => {
-    const classes = {
-      Urgent: 'triage-urgent',
-      'Not Urgent': 'triage-non-urgent'
-    };
-    return classes[level] || '';
   };
 
   const formatDateTime = (date) => {
@@ -598,9 +599,7 @@ function ERStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socket 
                     <div className="request-main-info">
                       <span className="request-id-compact">{request.requestId}</span>
                       <span className="patient-name-compact">{request.patientDetails.name}</span>
-                      <span className={`triage-badge-compact ${getTriageLevelClass(request.patientDetails.triageLevel)}`}>
-                        {request.patientDetails.triageLevel}
-                      </span>
+                      <span className="request-reason-chip">{request.patientDetails.reasonForAdmission}</span>
                     </div>
                     <span className={`status-badge-compact ${getStatusBadgeClass(request.status)}`}>
                       {request.status}
@@ -659,7 +658,10 @@ function ERStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socket 
       {/* Create Request Modal */}
       <EmergencyAdmission
         isOpen={showCreateModal}
-        onClose={() => setShowCreateModal(false)}
+        onClose={() => {
+          setShowCreateModal(false);
+          setAvailableBeds([]);
+        }}
         onSubmit={handleCreateRequest}
         loading={loading}
         title="New Bed Request"
@@ -667,7 +669,6 @@ function ERStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socket 
         showBedReservation={true}
         availableBeds={availableBeds}
         onFetchBeds={fetchAvailableBeds}
-        getTriageLevelClass={getTriageLevelClass}
       />
 
       {/* Request Status Notification Popup */}
@@ -702,10 +703,8 @@ function ERStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socket 
                 <span className="detail-value">{notification.request.patientDetails?.name}</span>
               </div>
               <div className="notification-detail">
-                <span className="detail-label">Triage Level:</span>
-                <span className={`triage-badge triage-${notification.request.patientDetails?.triageLevel?.toLowerCase()}`}>
-                  {notification.request.patientDetails?.triageLevel}
-                </span>
+                <span className="detail-label">Reason:</span>
+                <span className="detail-value">{notification.request.patientDetails?.reasonForAdmission}</span>
               </div>
 
               {notification.type === 'approved' && notification.request.assignedBed && (
