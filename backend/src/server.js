@@ -367,10 +367,9 @@ const Bed = require('./models/Bed');
 const Patient = require('./models/Patient');
 const OccupancyHistory = require('./models/OccupancyHistory');
 const Alert = require('./models/Alert');
-const CleaningJob = require('./models/CleaningJob');
 
 // Initialize seed routes with models
-initSeedModels({ Bed, Patient, OccupancyHistory, Alert, CleaningJob });
+initSeedModels({ Bed, Patient, OccupancyHistory, Alert });
 
 // Admin-only middleware for seed routes
 const adminOnly = (req, res, next) => {

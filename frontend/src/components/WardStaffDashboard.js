@@ -41,7 +41,7 @@ function WardStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socke
   
   // Confirmation modal states
   const [showConfirmModal, setShowConfirmModal] = useState(false);
-  const [confirmModalData, setConfirmModalData] = useState({ title: '', message: '', onConfirm: null });
+  const [confirmModalData] = useState({ title: '', message: '', onConfirm: null });
 
   // Play notification sound function
   const playNotificationSound = () => {
