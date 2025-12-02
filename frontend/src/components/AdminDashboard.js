@@ -552,15 +552,30 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
         ? currentOccupancy
         : parseFloat(avgOccupancy.toFixed(1));
 
-      // Calculate projection
+      // Calculate projection using Exponential Smoothing
+      // Formula: F(t+1) = α * A(t) + (1 - α) * F(t)
+      // where α is the smoothing factor (0 < α < 1)
+      const alpha = 0.3; // Smoothing factor (configurable, typically 0.2-0.4 for occupancy data)
+
       let projectedOccupancy;
-      if (trendType === 'increasing') {
-        projectedOccupancy = Math.min(100, currentValue + Math.abs(trend));
-      } else if (trendType === 'decreasing') {
-        projectedOccupancy = Math.max(0, currentValue - Math.abs(trend));
+      if (wardOccupancies.length >= 2) {
+        // Initialize forecast with first value
+        let forecast = wardOccupancies[0];
+
+        // Apply exponential smoothing iteratively through the historical data
+        for (let i = 1; i < wardOccupancies.length; i++) {
+          forecast = alpha * wardOccupancies[i] + (1 - alpha) * forecast;
+        }
+
+        // Project next period using current value and last forecast
+        projectedOccupancy = alpha * currentValue + (1 - alpha) * forecast;
       } else {
+        // If not enough data, use current value
         projectedOccupancy = currentValue;
       }
+
+      // Ensure projection is within valid range [0, 100]
+      projectedOccupancy = Math.max(0, Math.min(100, projectedOccupancy));
 
       wardForecasts.push({
         ward,
