@@ -823,6 +823,181 @@ app.get('/api/users', async (req, res) => {
   }
 });
 
+// Create a new user (Admin only)
+app.post('/api/users', async (req, res) => {
+  try {
+    const { username, password, role } = req.body;
+
+    // Validation
+    if (!username || !password || !role) {
+      return res.status(400).json({ error: 'Username, password, and role are required' });
+    }
+
+    // Check if username already exists
+    const existingUser = await User.findOne({ username });
+    if (existingUser) {
+      return res.status(400).json({ error: 'Username already exists' });
+    }
+
+    // Validate role
+    const validRoles = ['admin', 'icu_manager', 'ward_staff', 'er_staff'];
+    if (!validRoles.includes(role)) {
+      return res.status(400).json({ error: 'Invalid role' });
+    }
+
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Create user with username as name by default
+    const newUser = await User.create({
+      username,
+      password: hashedPassword,
+      name: username, // Use username as name
+      role,
+      ward: null,
+      email: null
+    });
+
+    console.log(`✅ New user created: ${username} (${role})`);
+
+    // Emit socket event for real-time update
+    io.emit('user-created', {
+      id: newUser._id,
+      username: newUser.username,
+      name: newUser.name,
+      role: newUser.role,
+      ward: newUser.ward
+    });
+
+    res.status(201).json({
+      message: 'User created successfully',
+      user: {
+        id: newUser._id,
+        username: newUser.username,
+        name: newUser.name,
+        role: newUser.role,
+        ward: newUser.ward,
+        email: newUser.email,
+        createdAt: newUser.createdAt
+      }
+    });
+  } catch (error) {
+    console.error('Error creating user:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Update user (Admin only)
+app.put('/api/users/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { username, password, role } = req.body;
+
+    // Find user
+    const user = await User.findById(id);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Check if username is being changed and if it already exists
+    if (username && username !== user.username) {
+      const existingUser = await User.findOne({ username });
+      if (existingUser) {
+        return res.status(400).json({ error: 'Username already exists' });
+      }
+      user.username = username;
+      user.name = username; // Update name to match username
+    }
+
+    // Update role
+    if (role) {
+      const validRoles = ['admin', 'icu_manager', 'ward_staff', 'er_staff'];
+      if (!validRoles.includes(role)) {
+        return res.status(400).json({ error: 'Invalid role' });
+      }
+      user.role = role;
+    }
+
+    // Update password if provided
+    if (password) {
+      user.password = await bcrypt.hash(password, 10);
+    }
+
+    await user.save();
+
+    console.log(`✅ User updated: ${user.username} (${user.role})`);
+
+    // Emit socket event for real-time update
+    io.emit('user-updated', {
+      id: user._id,
+      username: user.username,
+      name: user.name,
+      role: user.role,
+      ward: user.ward
+    });
+
+    res.json({
+      message: 'User updated successfully',
+      user: {
+        id: user._id,
+        username: user.username,
+        name: user.name,
+        role: user.role,
+        ward: user.ward,
+        email: user.email,
+        createdAt: user.createdAt
+      }
+    });
+  } catch (error) {
+    console.error('Error updating user:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Delete user (Admin only)
+app.delete('/api/users/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Find user
+    const user = await User.findById(id);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Prevent deleting the last admin
+    if (user.role === 'admin') {
+      const adminCount = await User.countDocuments({ role: 'admin' });
+      if (adminCount <= 1) {
+        return res.status(400).json({ error: 'Cannot delete the last admin user' });
+      }
+    }
+
+    await User.findByIdAndDelete(id);
+
+    console.log(`✅ User deleted: ${user.username} (${user.role})`);
+
+    // Emit socket event for real-time update
+    io.emit('user-deleted', {
+      id: user._id,
+      username: user.username
+    });
+
+    res.json({
+      message: 'User deleted successfully',
+      user: {
+        id: user._id,
+        username: user.username,
+        name: user.name,
+        role: user.role
+      }
+    });
+  } catch (error) {
+    console.error('Error deleting user:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ 

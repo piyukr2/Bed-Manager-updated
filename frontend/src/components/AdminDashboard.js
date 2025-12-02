@@ -2224,6 +2224,24 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
                 </div>
               </div>
 
+              {/* Settings Actions */}
+              <div className="settings-actions">
+                <button
+                  className="btn-save-settings"
+                  onClick={handleUpdateSettings}
+                  disabled={settingsSaving}
+                >
+                  {settingsSaving ? 'Saving...' : 'Save Settings'}
+                </button>
+                <button
+                  className="btn-reset-settings"
+                  onClick={handleResetSettings}
+                  disabled={settingsSaving}
+                >
+                  Reset to Defaults
+                </button>
+              </div>
+
               {/* Seed Data Import Section */}
               <div className="seed-import-section">
                 <h3>Import Historical Data</h3>
@@ -2365,23 +2383,6 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
                     </button>
                   )}
                 </div>
-              </div>
-
-              <div className="settings-actions">
-                <button
-                  className="btn-save-settings"
-                  onClick={handleUpdateSettings}
-                  disabled={settingsSaving}
-                >
-                  {settingsSaving ? 'Saving...' : 'Save Settings'}
-                </button>
-                <button
-                  className="btn-reset-settings"
-                  onClick={handleResetSettings}
-                  disabled={settingsSaving}
-                >
-                  Reset to Defaults
-                </button>
               </div>
 
               {settings.lastUpdatedBy && (
