@@ -59,9 +59,9 @@ The Hospital Bed Manager System is a full-stack web application that provides re
 
 ## 🏗 System Architecture
 
-![Solution Diagram](frontend/screenshots/Bed_Manager_Solution_Diagram.jpeg)
+![Solution Diagram](screenshots/Bed_Manager_Solution_Diagram.jpeg)
 
-![User Flow Diagram](frontend/screenshots/User_flow_diagram.png)
+![User Flow Diagram](screenshots/User_flow_diagram.png)
 
 The system follows a client-server architecture with real-time bidirectional communication:
 - **Frontend**: React SPA with role-based dashboards
@@ -87,7 +87,7 @@ The system follows a client-server architecture with real-time bidirectional com
 - Limited availability summary
 - Real-time notifications on approval/denial
 
-![Bed Request Form](frontend/screenshots/Bed_Req.png)
+![Bed Request Form](screenshots/Bed_Req.png)
 
 ### 2. ICU Manager
 **Primary Function**: Own bed allocation and transfers across ICU/wards; manage real-time capacity
@@ -107,7 +107,7 @@ The system follows a client-server architecture with real-time bidirectional com
 - Transfer management interface
 - Alert center for threshold breaches
 
-![ICU Manager Dashboard](frontend/screenshots/ICU_manager_dashboard.png)
+![ICU Manager Dashboard](screenshots/ICU_manager_dashboard.png)
 
 ### 3. Ward/Unit Staff
 **Primary Function**: Operate beds on the ground—prepare, admit, discharge, and update bed statuses
@@ -127,7 +127,7 @@ The system follows a client-server architecture with real-time bidirectional com
 - Discharge planner with expected discharge times
 - Cleaning workflow logging
 
-![Ward Staff Dashboard](frontend/screenshots/Ward_bed_list.png)
+![Ward Staff Dashboard](screenshots/Ward_bed_list.png)
 
 ### 4. Hospital Administration
 **Primary Function**: Review analytics and capacity trends; set planning parameters
@@ -148,9 +148,9 @@ The system follows a client-server architecture with real-time bidirectional com
 - Export and scheduled report delivery
 - AI-powered analytics chatbot
 
-![Daily Occupancy%](frontend/screenshots/admin_analytics_page_screenshot.png)
+![Daily Occupancy%](screenshots/admin_analytics_page_screenshot.png)
 
-![Admin Chatbot](frontend/screenshots/Chatbot.png)
+![Admin Chatbot](screenshots/Chatbot.png)
 
 ## 🔄 Workflows
 
