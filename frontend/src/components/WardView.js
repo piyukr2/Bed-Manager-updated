@@ -118,6 +118,10 @@ function WardView({ beds, onUpdateBed, canUpdateBeds }) {
                       <span className="mini-stat-label">Cleaning</span>
                       <span className="mini-stat-value">{stats.cleaning}</span>
                     </div>
+                    <div className="mini-stat">
+                      <span className="mini-stat-label">Reserved</span>
+                      <span className="mini-stat-value">{stats.reserved}</span>
+                    </div>
                   </div>
                   
                   <div className={`ward-occupancy-indicator ${stats.occupancyRate >= 90 ? 'critical' : stats.occupancyRate >= 80 ? 'warning' : 'normal'}`}>

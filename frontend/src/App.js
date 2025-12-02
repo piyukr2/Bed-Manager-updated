@@ -134,6 +134,18 @@ function App() {
       fetchStats();
     });
 
+    socket.on('patient-transferred', ({ patient, fromBed, toBed, fromWard, toWard }) => {
+      addAlert({
+        type: 'info',
+        message: `Patient ${patient.name} transferred from ${fromWard} (${fromBed.bedNumber}) to ${toWard} (${toBed.bedNumber})`,
+        timestamp: new Date(),
+        ward: toWard
+      });
+      fetchBeds();
+      fetchPatients();
+      fetchStats();
+    });
+
     socket.on('new-alert', (alert) => {
       addAlert({
         type: alert.type,

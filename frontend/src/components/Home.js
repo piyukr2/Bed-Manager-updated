@@ -1,7 +1,11 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { QRCodeCanvas } from 'qrcode.react';
 import './Home.css';
 
 function Home({ onGetStarted, theme, onToggleTheme }) {
+    const [showQRModal, setShowQRModal] = useState(false);
+    const networkUrl = process.env.REACT_APP_NETWORK_URL || "http://localhost:3000";
+
     return (
         <div className="home-page">
             {/* Navigation */}
@@ -21,6 +25,28 @@ function Home({ onGetStarted, theme, onToggleTheme }) {
                             <span className="theme-icon">
                                 {theme === 'light' ? '🌙' : '☀️'}
                             </span>
+                        </button>
+                        <button 
+                            onClick={() => setShowQRModal(true)} 
+                            className="nav-qr-btn"
+                            aria-label="Show QR Code"
+                            title="Scan to access on your network"
+                        >
+                            <svg 
+                                width="20" 
+                                height="20" 
+                                viewBox="0 0 24 24" 
+                                fill="none" 
+                                stroke="currentColor" 
+                                strokeWidth="2" 
+                                strokeLinecap="round" 
+                                strokeLinejoin="round"
+                            >
+                                <rect x="3" y="3" width="7" height="7"/>
+                                <rect x="14" y="3" width="7" height="7"/>
+                                <rect x="14" y="14" width="7" height="7"/>
+                                <rect x="3" y="14" width="7" height="7"/>
+                            </svg>
                         </button>
                         <button onClick={onGetStarted} className="nav-login-btn">
                             Login
@@ -205,6 +231,25 @@ function Home({ onGetStarted, theme, onToggleTheme }) {
                     </p>
                 </div>
             </footer>
+
+            {/* QR Code Modal */}
+            {showQRModal && (
+                <div className="qr-modal-overlay" onClick={() => setShowQRModal(false)}>
+                    <div className="qr-modal-content" onClick={(e) => e.stopPropagation()}>
+                        <button className="qr-close-btn" onClick={() => setShowQRModal(false)}>×</button>
+                        <h2 className="qr-modal-title">Scan to Access on Your Network</h2>
+                        <div className="qr-code-container">
+                            <QRCodeCanvas 
+                                value={networkUrl} 
+                                size={256}
+                                level="H"
+                                includeMargin={true}
+                            />
+                        </div>
+                        <p className="qr-url-text">{networkUrl}</p>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

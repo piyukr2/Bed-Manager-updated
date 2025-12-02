@@ -180,6 +180,16 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
       fetchHistory();
     });
 
+    socket.on('patient-transferred', () => {
+      fetchStats();
+      fetchHistory();
+    });
+
+    socket.on('ward-transfer-updated', () => {
+      fetchStats();
+      fetchHistory();
+    });
+
     // Settings events
     socket.on('settings-updated', (updatedSettings) => {
       setSettings(updatedSettings);
@@ -201,6 +211,8 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
       socket.off('bed-request-cancelled');
       socket.off('patient-admitted');
       socket.off('patient-discharged');
+      socket.off('patient-transferred');
+      socket.off('ward-transfer-updated');
       socket.off('settings-updated');
       socket.off('beds-synced');
     };
