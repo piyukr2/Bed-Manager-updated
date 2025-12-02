@@ -29,6 +29,17 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
   const [seedImportResult, setSeedImportResult] = useState(null);
   const [dbStatus, setDbStatus] = useState(null);
 
+  // User management state
+  const [users, setUsers] = useState([]);
+  const [showUserForm, setShowUserForm] = useState(false);
+  const [editingUser, setEditingUser] = useState(null);
+  const [userForm, setUserForm] = useState({
+    username: '',
+    password: '',
+    role: 'ward_staff'
+  });
+  const [userFormErrors, setUserFormErrors] = useState({});
+
   // Chart options
   const [showMaxOccupancy, setShowMaxOccupancy] = useState(true);
 
@@ -129,6 +140,13 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
   }, [period]);
 
   useEffect(() => {
+    // Fetch users when settings tab is active
+    if (activeTab === 'settings') {
+      fetchUsers();
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
     if (!socket) return;
 
     // Bed-related events
@@ -195,6 +213,19 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
       setSettings(updatedSettings);
     });
 
+    // User management events
+    socket.on('user-created', () => {
+      fetchUsers();
+    });
+
+    socket.on('user-updated', () => {
+      fetchUsers();
+    });
+
+    socket.on('user-deleted', () => {
+      fetchUsers();
+    });
+
     // Beds synced event (when ward capacity changes)
     socket.on('beds-synced', () => {
       fetchStats();
@@ -215,6 +246,9 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
       socket.off('ward-transfer-updated');
       socket.off('settings-updated');
       socket.off('beds-synced');
+      socket.off('user-created');
+      socket.off('user-updated');
+      socket.off('user-deleted');
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [socket]);
@@ -343,6 +377,142 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
       console.error('Error status:', error.response?.status);
       console.error('Full error:', error);
     }
+  };
+
+  const fetchUsers = async () => {
+    try {
+      const response = await axios.get(`${API_URL}/users`);
+      console.log('Users fetched successfully:', response.data.users.length, 'users');
+      setUsers(response.data.users);
+    } catch (error) {
+      console.error('Error fetching users:', error);
+      console.error('Error details:', error.response?.data);
+    }
+  };
+
+  const handleUserFormChange = (field, value) => {
+    setUserForm(prev => ({ ...prev, [field]: value }));
+    // Clear error for this field
+    if (userFormErrors[field]) {
+      setUserFormErrors(prev => ({ ...prev, [field]: '' }));
+    }
+  };
+
+  const validateUserForm = () => {
+    const errors = {};
+    
+    if (!userForm.username || userForm.username.trim().length < 3) {
+      errors.username = 'Username must be at least 3 characters';
+    }
+    
+    if (!editingUser && (!userForm.password || userForm.password.length < 6)) {
+      errors.password = 'Password must be at least 6 characters';
+    }
+    
+    if (!userForm.role) {
+      errors.role = 'Role is required';
+    }
+    
+    setUserFormErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const handleCreateUser = async () => {
+    if (!validateUserForm()) {
+      return;
+    }
+
+    try {
+      const response = await axios.post(`${API_URL}/users`, userForm);
+      alert(`User "${response.data.user.username}" created successfully!`);
+      
+      // Reset form
+      setUserForm({
+        username: '',
+        password: '',
+        role: 'ward_staff'
+      });
+      setShowUserForm(false);
+      setUserFormErrors({});
+      
+      // Refresh users list
+      fetchUsers();
+    } catch (error) {
+      console.error('Error creating user:', error);
+      alert(error.response?.data?.error || 'Failed to create user');
+    }
+  };
+
+  const handleEditUser = (user) => {
+    setEditingUser(user);
+    setUserForm({
+      username: user.username,
+      password: '', // Don't populate password
+      role: user.role
+    });
+    setShowUserForm(true);
+    setUserFormErrors({});
+  };
+
+  const handleUpdateUser = async () => {
+    if (!validateUserForm()) {
+      return;
+    }
+
+    try {
+      const updateData = { ...userForm };
+      // Don't send password if it's empty (not changing)
+      if (!updateData.password) {
+        delete updateData.password;
+      }
+
+      const response = await axios.put(`${API_URL}/users/${editingUser.id}`, updateData);
+      alert(`User "${response.data.user.username}" updated successfully!`);
+      
+      // Reset form
+      setUserForm({
+        username: '',
+        password: '',
+        role: 'ward_staff'
+      });
+      setShowUserForm(false);
+      setEditingUser(null);
+      setUserFormErrors({});
+      
+      // Refresh users list
+      fetchUsers();
+    } catch (error) {
+      console.error('Error updating user:', error);
+      alert(error.response?.data?.error || 'Failed to update user');
+    }
+  };
+
+  const handleDeleteUser = async (user) => {
+    if (!window.confirm(`Are you sure you want to delete user "${user.username}"? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      await axios.delete(`${API_URL}/users/${user.id}`);
+      alert(`User "${user.username}" deleted successfully!`);
+      
+      // Refresh users list
+      fetchUsers();
+    } catch (error) {
+      console.error('Error deleting user:', error);
+      alert(error.response?.data?.error || 'Failed to delete user');
+    }
+  };
+
+  const handleCancelUserForm = () => {
+    setShowUserForm(false);
+    setEditingUser(null);
+    setUserForm({
+      username: '',
+      password: '',
+      role: 'ward_staff'
+    });
+    setUserFormErrors({});
   };
 
   const handleUpdateSettings = async () => {
@@ -2145,6 +2315,24 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
                 </div>
               </div>
 
+              {/* Settings Actions */}
+              <div className="settings-actions">
+                <button
+                  className="btn-save-settings"
+                  onClick={handleUpdateSettings}
+                  disabled={settingsSaving}
+                >
+                  {settingsSaving ? 'Saving...' : 'Save Settings'}
+                </button>
+                <button
+                  className="btn-reset-settings"
+                  onClick={handleResetSettings}
+                  disabled={settingsSaving}
+                >
+                  Reset to Defaults
+                </button>
+              </div>
+
               {/* Seed Data Import Section */}
               <div className="seed-import-section">
                 <h3>Import Historical Data</h3>
@@ -2288,21 +2476,147 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
                 </div>
               </div>
 
-              <div className="settings-actions">
-                <button
-                  className="btn-save-settings"
-                  onClick={handleUpdateSettings}
-                  disabled={settingsSaving}
-                >
-                  {settingsSaving ? 'Saving...' : 'Save Settings'}
-                </button>
-                <button
-                  className="btn-reset-settings"
-                  onClick={handleResetSettings}
-                  disabled={settingsSaving}
-                >
-                  Reset to Defaults
-                </button>
+              {/* User Management Section */}
+              <div className="user-management-section">
+                <div className="section-header">
+                  <h3>User Management</h3>
+                  <button 
+                    className="btn-add-user"
+                    onClick={() => setShowUserForm(!showUserForm)}
+                  >
+                    {showUserForm ? 'Cancel' : '+ Add New User'}
+                  </button>
+                </div>
+
+                {/* User Form */}
+                {showUserForm && (
+                  <div className="user-form-container">
+                    <h4>{editingUser ? 'Edit User' : 'Create New User'}</h4>
+                    <div className="user-form">
+                      <div className="form-row">
+                        <div className="form-group">
+                          <label>Username *</label>
+                          <input
+                            type="text"
+                            value={userForm.username}
+                            onChange={(e) => handleUserFormChange('username', e.target.value)}
+                            placeholder="Enter username"
+                            className={userFormErrors.username ? 'error' : ''}
+                          />
+                          {userFormErrors.username && (
+                            <span className="error-message">{userFormErrors.username}</span>
+                          )}
+                        </div>
+
+                        <div className="form-group">
+                          <label>Password {editingUser ? '(leave blank to keep current)' : '*'}</label>
+                          <input
+                            type="password"
+                            value={userForm.password}
+                            onChange={(e) => handleUserFormChange('password', e.target.value)}
+                            placeholder={editingUser ? 'Enter new password (optional)' : 'Enter password'}
+                            className={userFormErrors.password ? 'error' : ''}
+                          />
+                          {userFormErrors.password && (
+                            <span className="error-message">{userFormErrors.password}</span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="form-row single-column">
+                        <div className="form-group">
+                          <label>Role * {editingUser?.role === 'admin' && '(Admin role cannot be changed)'}</label>
+                          <select
+                            value={userForm.role}
+                            onChange={(e) => handleUserFormChange('role', e.target.value)}
+                            className={userFormErrors.role ? 'error' : ''}
+                            disabled={editingUser?.role === 'admin'}
+                          >
+                            <option value="ward_staff">Ward Staff</option>
+                            <option value="er_staff">ER Staff</option>
+                            <option value="icu_manager">ICU Manager</option>
+                            <option value="admin">Administrator</option>
+                          </select>
+                          {userFormErrors.role && (
+                            <span className="error-message">{userFormErrors.role}</span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="form-actions">
+                        <button 
+                          className="btn-submit-user"
+                          onClick={editingUser ? handleUpdateUser : handleCreateUser}
+                        >
+                          {editingUser ? 'Update User' : 'Create User'}
+                        </button>
+                        <button 
+                          className="btn-cancel-user"
+                          onClick={handleCancelUserForm}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Users List */}
+                <div className="users-list">
+                  {users.length === 0 ? (
+                    <div style={{ padding: '2rem', textAlign: 'center' }}>
+                      <p>Loading users...</p>
+                    </div>
+                  ) : (
+                    <div className="users-table-container">
+                      <table className="users-table">
+                        <thead>
+                          <tr>
+                            <th>Username</th>
+                            <th>Role</th>
+                            <th>Created</th>
+                            <th>Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {users.map((user) => (
+                            <tr key={user.id}>
+                              <td>{user.username}</td>
+                              <td>
+                                <span className={`role-badge role-${user.role}`}>
+                                  {user.role === 'admin' ? 'Administrator' :
+                                   user.role === 'icu_manager' ? 'ICU Manager' :
+                                   user.role === 'ward_staff' ? 'Ward Staff' :
+                                   user.role === 'er_staff' ? 'ER Staff' : user.role}
+                                </span>
+                              </td>
+                              <td>{formatDate(user.createdAt)}</td>
+                              <td>
+                                <div className="user-actions">
+                                  <button 
+                                    className="btn-edit-user"
+                                    onClick={() => handleEditUser(user)}
+                                    title="Edit user"
+                                  >
+                                    ✏️
+                                  </button>
+                                  <button 
+                                    className="btn-delete-user"
+                                    onClick={() => handleDeleteUser(user)}
+                                    title={user.role === 'admin' ? 'Admin users cannot be deleted' : 'Delete user'}
+                                    disabled={user.role === 'admin'}
+                                  >
+                                    🗑️
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
               </div>
 
               {settings.lastUpdatedBy && (
