@@ -2898,6 +2898,61 @@ body {
   gap: 0.75rem;
 }
 
+.request-section {
+  margin-bottom: 1rem;
+}
+
+.request-section h4 {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  letter-spacing: 0.5px;
+  margin-bottom: 0.75rem;
+  text-transform: uppercase;
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.75rem;
+}
+
+.detail-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.detail-item .detail-label {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.detail-item .detail-value {
+  font-size: 0.95rem;
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.request-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.25rem;
+}
+
+.requested-by {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.request-header h3 {
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
 .request-info-row {
   display: flex;
   justify-content: space-between;
@@ -3949,12 +4004,12 @@ body {
   background: #be1640;
 }
 
-.btn-report-issue {
+.btn-transfer-request {
   flex: 1;
   padding: 0.625rem 0.75rem;
-  background: transparent;
-  color: var(--text-secondary);
-  border: 2px solid var(--border-soft);
+  background: #3b82f6;
+  color: white;
+  border: none;
   border-radius: 6px;
   font-size: 0.8rem;
   font-weight: 600;
@@ -3965,9 +4020,160 @@ body {
   text-align: center;
 }
 
-.btn-report-issue:hover {
-  border-color: var(--text-secondary);
-  background: var(--surface-panel);
+.btn-transfer-request:hover {
+  background: #2563eb;
+  transform: translateY(-1px);
+}
+
+.discharge-date-display {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.btn-edit-discharge {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0.2rem;
+  border-radius: 3px;
+  font-size: 0.8rem;
+  transition: background-color 0.2s;
+  opacity: 0.7;
+}
+
+.btn-edit-discharge:hover {
+  background-color: var(--surface-hover);
+  opacity: 1;
+}
+
+.discharge-edit-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.discharge-date-input {
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--border-soft);
+  border-radius: 4px;
+  font-size: 0.8rem;
+  min-width: 200px;
+}
+
+.discharge-edit-actions {
+  display: flex;
+  gap: 0.3rem;
+}
+
+.btn-save-discharge,
+.btn-cancel-discharge {
+  padding: 0.2rem 0.4rem;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+.btn-save-discharge {
+  background: #10b981;
+  color: white;
+}
+
+.btn-save-discharge:hover {
+  background: #059669;
+}
+
+.btn-cancel-discharge {
+  background: #ef4444;
+  color: white;
+}
+
+.btn-cancel-discharge:hover {
+  background: #dc2626;
+}
+
+/* Ward Transfer Modal Styles */
+.transfer-modal {
+  width: min(580px, 95%);
+}
+
+.transfer-modal .modal-header {
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
+}
+
+.transfer-modal .modal-header h3 {
+  font-size: 1.15rem;
+  font-weight: 600;
+}
+
+.transfer-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.2rem;
+}
+
+.transfer-form .bed-details {
+  margin-bottom: 0;
+}
+
+.transfer-form .form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.8rem;
+}
+
+.transfer-form .form-group:first-child {
+  margin-top: 0;
+}
+
+.transfer-form label {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.form-select,
+.form-textarea {
+  padding: 0.75rem;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  font-size: 0.9rem;
+  background: var(--surface-input);
+  color: var(--text-primary);
+  transition: all 0.2s ease;
+}
+
+.form-select:focus,
+.form-textarea:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.form-textarea {
+  resize: vertical;
+  min-height: 80px;
+  font-family: inherit;
+}
+
+.transfer-note {
+  margin-top: 0.3rem;
+}
+
+.transfer-note small {
+  color: #e11d48;
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+.transfer-modal .modal-actions {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(148, 163, 184, 0.2);
 }
 
 .available-bed-status {
@@ -7856,6 +8062,234 @@ body {
 
 :root[data-theme='dark'] .emergency-header {
   background: linear-gradient(135deg, #0369a1 0%, #0891b2 100%);
+}
+
+/* Ward Transfer Requests Styling */
+.transfers-container {
+  width: 100%;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.transfer-target {
+  color: #3b82f6;
+  font-weight: 700;
+}
+
+.full-width {
+  grid-column: 1 / -1;
+}
+
+.transfers-header {
+  padding: 1.5rem;
+  border-bottom: 1px solid var(--border-soft);
+  background: var(--surface-card);
+}
+
+.transfers-header h2 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 0.5rem;
+}
+
+.transfers-header p {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.transfers-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(450px, 1fr));
+  gap: 1.5rem;
+  padding: 1.5rem;
+  max-height: calc(100vh - 300px);
+  overflow-y: auto;
+}
+
+.transfer-request-card {
+  background: var(--surface-card);
+  border: 1px solid var(--border-soft);
+  border-radius: 12px;
+  padding: 1.5rem;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.transfer-request-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  border-color: #3b82f6;
+}
+
+.transfer-request-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 1.25rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.transfer-request-info h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 0.5rem;
+}
+
+.transfer-status-badge {
+  display: inline-block;
+  padding: 0.35rem 0.85rem;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.transfer-status-badge.pending {
+  background: rgba(251, 191, 36, 0.15);
+  color: #f59e0b;
+  border: 1px solid rgba(251, 191, 36, 0.3);
+}
+
+.transfer-status-badge.approved {
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.transfer-status-badge.denied {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.transfer-request-time {
+  color: var(--text-quiet);
+  font-size: 0.8rem;
+}
+
+.transfer-request-details {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  margin-bottom: 1.25rem;
+}
+
+.transfer-detail-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.transfer-detail-row .detail-label {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+  min-width: 120px;
+}
+
+.transfer-detail-row .detail-value {
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  font-weight: 600;
+  text-align: right;
+  flex: 1;
+}
+
+.transfer-actions {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 1.25rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--border-soft);
+}
+
+.btn-approve,
+.btn-deny {
+  flex: 1;
+  padding: 0.65rem 1rem;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.btn-approve {
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: white;
+}
+
+.btn-approve:hover {
+  background: linear-gradient(135deg, #059669, #047857);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+}
+
+.btn-deny {
+  background: transparent;
+  color: #ef4444;
+  border: 2px solid #ef4444;
+}
+
+.btn-deny:hover {
+  background: #ef4444;
+  color: white;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+}
+
+/* Empty state for transfers */
+.transfers-container .empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 4rem 2rem;
+  text-align: center;
+}
+
+.transfers-container .empty-icon {
+  font-size: 4rem;
+  margin-bottom: 1rem;
+  opacity: 0.5;
+}
+
+.transfers-container .empty-state h3 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 0.5rem;
+}
+
+.transfers-container .empty-state p {
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+}
+
+/* Responsive design for transfer cards */
+@media (max-width: 1200px) {
+  .transfers-grid {
+    grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+  .transfers-grid {
+    grid-template-columns: 1fr;
+    padding: 1rem;
+  }
+  
+  .transfer-request-card {
+    padding: 1.25rem;
+  }
 }
 
 :root[data-theme='dark'] .form-section h3 {

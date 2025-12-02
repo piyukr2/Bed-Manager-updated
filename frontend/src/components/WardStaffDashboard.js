@@ -11,17 +11,26 @@ function WardStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socke
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(false);
   const [selectedBed, setSelectedBed] = useState(null);
-  const [showIssueModal, setShowIssueModal] = useState(false);
   const [showDischargeModal, setShowDischargeModal] = useState(false);
   const [bedToDischarge, setBedToDischarge] = useState(null);
   const [selectedWard, setSelectedWard] = useState('All'); // Default to 'All' for ward staff
   const [selectedStatus, setSelectedStatus] = useState('all'); // Filter by bed status: 'all', 'available', 'occupied', 'cleaning', 'reserved', 'maintenance'
   const [searchQuery, setSearchQuery] = useState(''); // Search by bed number, patient name, location, equipment
-  const [issueDetails, setIssueDetails] = useState({
+  
+  // Ward Transfer states
+  const [showTransferModal, setShowTransferModal] = useState(false);
+  const [transferDetails, setTransferDetails] = useState({
     bedId: null,
-    issueType: 'maintenance',
-    description: ''
+    patientId: null,
+    currentWard: '',
+    targetWard: '',
+    reason: ''
   });
+  const [availableWards, setAvailableWards] = useState([]);
+  
+  // Discharge Date Editing states
+  const [editingDischargeDate, setEditingDischargeDate] = useState(null);
+  const [newDischargeDate, setNewDischargeDate] = useState('');
 
   const fetchData = async () => {
     try {
@@ -79,12 +88,22 @@ function WardStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socke
       fetchData();
     });
 
+    socket.on('ward-transfer-updated', () => {
+      fetchData();
+    });
+
+    socket.on('patient-transferred', () => {
+      fetchData();
+    });
+
     return () => {
       socket.off('bed-updated');
       socket.off('patient-admitted');
       socket.off('patient-discharged');
       socket.off('bed-request-approved');
       socket.off('bed-request-fulfilled');
+      socket.off('ward-transfer-updated');
+      socket.off('patient-transferred');
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [socket, selectedWard]);
@@ -144,32 +163,113 @@ function WardStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socke
   //   }
   // };
 
-  const handleReportIssue = async (bed) => {
-    setIssueDetails({
-      bedId: bed._id,
-      issueType: 'maintenance',
-      description: ''
-    });
-    setSelectedBed(bed);
-    setShowIssueModal(true);
+
+
+  // Ward Transfer functions
+  const handleRequestTransfer = async (bed) => {
+    if (!bed.patientId) {
+      return;
+    }
+
+    // Get available wards (excluding Emergency ward as per rule)
+    try {
+      const bedsRes = await axios.get(`${API_URL}/beds`);
+      const wards = [...new Set(bedsRes.data.map(b => b.ward))].filter(ward => ward !== 'Emergency');
+      setAvailableWards(wards);
+      
+      setTransferDetails({
+        bedId: bed._id,
+        patientId: bed.patientId._id,
+        currentWard: bed.ward,
+        targetWard: '',
+        reason: ''
+      });
+      setSelectedBed(bed);
+      setShowTransferModal(true);
+    } catch (error) {
+      console.error('Error fetching wards:', error);
+    }
   };
 
-  const submitIssue = async (e) => {
+  const submitTransferRequest = async (e) => {
     e.preventDefault();
 
+    if (!transferDetails.targetWard) {
+      alert('Please select a target ward');
+      return;
+    }
+
+    if (transferDetails.targetWard === 'Emergency') {
+      alert('Patients cannot be transferred TO Emergency ward');
+      return;
+    }
+
+    if (transferDetails.currentWard === transferDetails.targetWard) {
+      alert('Target ward must be different from current ward');
+      return;
+    }
+
     try {
-      // Mark bed as maintenance
-      await axios.put(`${API_URL}/beds/${issueDetails.bedId}`, {
-        status: 'maintenance',
-        notes: `${issueDetails.issueType}: ${issueDetails.description}`
+      const requestData = {
+        bedId: transferDetails.bedId,
+        patientId: transferDetails.patientId,
+        currentWard: transferDetails.currentWard,
+        targetWard: transferDetails.targetWard,
+        reason: transferDetails.reason || 'No specific reason provided',
+        requestedBy: currentUser._id || currentUser.id
+      };
+
+      await axios.post(`${API_URL}/ward-transfer-requests`, requestData);
+
+      setShowTransferModal(false);
+      setTransferDetails({
+        bedId: null,
+        patientId: null,
+        currentWard: '',
+        targetWard: '',
+        reason: ''
       });
 
-      setShowIssueModal(false);
-      fetchData();
+      alert('✓ Ward transfer request submitted successfully! The ICU Manager will review it.');
+      fetchData(); // Refresh data
     } catch (error) {
-      console.error('Error reporting issue:', error);
-      alert(error.response?.data?.error || 'Failed to report issue');
+      console.error('Error submitting transfer request:', error);
+      alert(error.response?.data?.error || 'Failed to submit transfer request');
     }
+  };
+
+  // Discharge Date Editing functions
+  const handleEditDischargeDate = (patientId, currentDate) => {
+    setEditingDischargeDate(patientId);
+    // Format the date for input field (YYYY-MM-DDTHH:MM)
+    const date = currentDate ? new Date(currentDate) : new Date();
+    const formatted = date.toISOString().slice(0, 16);
+    setNewDischargeDate(formatted);
+  };
+
+  const saveDischargeDate = async (patientId) => {
+    if (!newDischargeDate) {
+      alert('Please select a discharge date');
+      return;
+    }
+
+    try {
+      await axios.put(`${API_URL}/patients/${patientId}`, {
+        expectedDischarge: newDischargeDate
+      });
+
+      setEditingDischargeDate(null);
+      setNewDischargeDate('');
+      fetchData(); // Refresh the data
+    } catch (error) {
+      console.error('Error updating discharge date:', error);
+      alert(error.response?.data?.error || 'Failed to update discharge date');
+    }
+  };
+
+  const cancelEditDischargeDate = () => {
+    setEditingDischargeDate(null);
+    setNewDischargeDate('');
   };
 
   const acknowledgeReservation = async (bedId) => {
@@ -574,14 +674,44 @@ function WardStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socke
                               {formatDateTime(bed.patientId.admissionDate)}
                             </span>
                           </div>
-                          {bed.patientId.expectedDischarge && (
-                            <div className="bed-detail-row">
-                              <span className="detail-label">Expected Discharge:</span>
-                              <span className="detail-value">
-                                {formatDateTime(bed.patientId.expectedDischarge)}
+                          <div className="bed-detail-row">
+                            <span className="detail-label">Expected Discharge:</span>
+                            {editingDischargeDate === bed.patientId._id ? (
+                              <div className="discharge-edit-container">
+                                <input
+                                  type="datetime-local"
+                                  value={newDischargeDate}
+                                  onChange={(e) => setNewDischargeDate(e.target.value)}
+                                  className="discharge-date-input"
+                                />
+                                <div className="discharge-edit-actions">
+                                  <button
+                                    className="btn-save-discharge"
+                                    onClick={() => saveDischargeDate(bed.patientId._id)}
+                                  >
+                                    ✓
+                                  </button>
+                                  <button
+                                    className="btn-cancel-discharge"
+                                    onClick={cancelEditDischargeDate}
+                                  >
+                                    ✕
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <span className="detail-value discharge-date-display">
+                                {formatDateTime(bed.patientId.expectedDischarge) || 'Not set'}
+                                <button
+                                  className="btn-edit-discharge"
+                                  onClick={() => handleEditDischargeDate(bed.patientId._id, bed.patientId.expectedDischarge)}
+                                  title="Edit discharge date"
+                                >
+                                  ✏️
+                                </button>
                               </span>
-                            </div>
-                          )}
+                            )}
+                          </div>
                         </>
                       )}
 
@@ -616,12 +746,12 @@ function WardStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socke
                             </button>
                           ))}
 
-                          {bed.status !== 'maintenance' && (
+                          {bed.status === 'occupied' && bed.patientId && (
                             <button
-                              className="btn-report-issue"
-                              onClick={() => handleReportIssue(bed)}
+                              className="btn-transfer-request"
+                              onClick={() => handleRequestTransfer(bed)}
                             >
-                              Report Issue
+                              Ward Transfer
                             </button>
                           )}
                         </>
@@ -630,12 +760,13 @@ function WardStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socke
                           <div className="available-bed-status">
                             <span style={{ color: '#10b981', fontWeight: '500' }}>✓ Ready for admission</span>
                           </div>
-                          {bed.status !== 'maintenance' && (
+
+                          {bed.status === 'occupied' && bed.patientId && (
                             <button
-                              className="btn-report-issue"
-                              onClick={() => handleReportIssue(bed)}
+                              className="btn-transfer-request"
+                              onClick={() => handleRequestTransfer(bed)}
                             >
-                              Report Issue
+                              Request Ward Transfer
                             </button>
                           )}
                         </>
@@ -650,58 +781,7 @@ function WardStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socke
 
       </div>
 
-      {/* Issue Reporting Modal */}
-      {showIssueModal && selectedBed && (
-        <div className="modal-overlay" onClick={() => setShowIssueModal(false)}>
-          <div className="modal-content issue-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2>Report Issue - {selectedBed.bedNumber}</h2>
-              <button className="modal-close" onClick={() => setShowIssueModal(false)}>×</button>
-            </div>
 
-            <form onSubmit={submitIssue} className="issue-form">
-              <div className="form-group">
-                <label>Issue Type</label>
-                <select
-                  value={issueDetails.issueType}
-                  onChange={(e) => setIssueDetails({ ...issueDetails, issueType: e.target.value })}
-                  required
-                >
-                  <option value="maintenance">Maintenance Required</option>
-                  <option value="equipment">Equipment Malfunction</option>
-                  <option value="cleaning">Cleaning Issue</option>
-                  <option value="blocked">Bed Blocked</option>
-                  <option value="other">Other</option>
-                </select>
-              </div>
-
-              <div className="form-group">
-                <label>Description</label>
-                <textarea
-                  rows="4"
-                  value={issueDetails.description}
-                  onChange={(e) => setIssueDetails({ ...issueDetails, description: e.target.value })}
-                  placeholder="Describe the issue..."
-                  required
-                />
-              </div>
-
-              <div className="modal-actions">
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  onClick={() => setShowIssueModal(false)}
-                >
-                  Cancel
-                </button>
-                <button type="submit" className="btn-primary">
-                  Report & Mark Maintenance
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
 
       {/* Discharge Confirmation Modal */}
       {showDischargeModal && bedToDischarge && (
@@ -765,6 +845,84 @@ function WardStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socke
               >
                 {loading ? 'Processing...' : 'Confirm Discharge'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Ward Transfer Request Modal */}
+      {showTransferModal && selectedBed && (
+        <div className="modal-overlay" onClick={() => setShowTransferModal(false)}>
+          <div className="bed-modal transfer-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Request Ward Transfer</h3>
+              <button className="modal-close" onClick={() => setShowTransferModal(false)}>×</button>
+            </div>
+
+            <div className="modal-content">
+              <div className="bed-details">
+                <h4>Patient Information</h4>
+                <div className="detail-row">
+                  <span className="label">Patient:</span>
+                  <span className="value">{selectedBed.patientId?.name}</span>
+                </div>
+                <div className="detail-row">
+                  <span className="label">Current Ward:</span>
+                  <span className="value">{transferDetails.currentWard}</span>
+                </div>
+                <div className="detail-row">
+                  <span className="label">Bed:</span>
+                  <span className="value">{selectedBed.bedNumber}</span>
+                </div>
+              </div>
+
+              <form onSubmit={submitTransferRequest} className="transfer-form">
+                <div className="bed-details">
+                  <h4>Destination Ward</h4>
+                  <div className="form-group">
+                    <select
+                      value={transferDetails.targetWard}
+                      onChange={(e) => setTransferDetails({ ...transferDetails, targetWard: e.target.value })}
+                      required
+                      className="form-select"
+                    >
+                      <option value="">Select ward...</option>
+                      {availableWards.map(ward => (
+                        <option key={ward} value={ward}>{ward}</option>
+                      ))}
+                    </select>
+                    <div className="transfer-note">
+                      <small>⚠️ Note: Patients CANNOT be transferred TO Emergency ward</small>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bed-details">
+                  <h4>Reason for Transfer</h4>
+                  <div className="form-group">
+                    <textarea
+                      rows="3"
+                      value={transferDetails.reason}
+                      onChange={(e) => setTransferDetails({ ...transferDetails, reason: e.target.value })}
+                      placeholder="Explain why this patient needs to be transferred..."
+                      className="form-textarea"
+                    />
+                  </div>
+                </div>
+
+                <div className="modal-actions">
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={() => setShowTransferModal(false)}
+                  >
+                    Cancel
+                  </button>
+                  <button type="submit" className="btn-primary">
+                    Submit Transfer Request
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         </div>

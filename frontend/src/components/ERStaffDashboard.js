@@ -407,24 +407,6 @@ function ERStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socket 
           </div>
         </ResizableCard>
 
-        {/* Occupancy Rate - Above Availability Summary */}
-        {filteredAvailability && (
-          <ResizableCard
-            title="Occupancy Rate"
-            minWidth={300}
-            minHeight={120}
-          >
-            <div className="occupancy-rate-section">
-              <h3>Occupancy Rate{selectedWard !== 'All' ? ` - ${selectedWard}` : ' (Hospital-wide)'}</h3>
-              <div className="occupancy-rate-display">
-                <span className={`occupancy-rate-value ${filteredAvailability.occupancyRate >= 90 ? 'critical' : filteredAvailability.occupancyRate >= 80 ? 'warning' : 'normal'}`}>
-                  {filteredAvailability.occupancyRate}%
-                </span>
-              </div>
-            </div>
-          </ResizableCard>
-        )}
-
         {/* Availability Summary */}
         {filteredAvailability && (
           <ResizableCard

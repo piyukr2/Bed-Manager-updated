@@ -33,7 +33,7 @@ function ICUManagerDashboard({
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [recommendedBeds, setRecommendedBeds] = useState([]);
   // const [bedViewMode, setBedViewMode] = useState('ward');
-  const [activeTab, setActiveTab] = useState('overview'); // 'overview' or 'requests'
+  const [activeTab, setActiveTab] = useState('overview'); // 'overview', 'requests', or 'transfers'
   const [showNewRequestAlert, setShowNewRequestAlert] = useState(false);
   const [newRequestNotification, setNewRequestNotification] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -43,6 +43,17 @@ function ICUManagerDashboard({
   const [requestToDeny, setRequestToDeny] = useState(null);
   // eslint-disable-next-line no-unused-vars
   const [settings, setSettings] = useState(null);
+  
+  // Ward Transfer Requests state
+  const [transferRequests, setTransferRequests] = useState([]);
+  const [showNewTransferAlert, setShowNewTransferAlert] = useState(false);
+  const [newTransferNotification, setNewTransferNotification] = useState(null);
+  const [showTransferDenyModal, setShowTransferDenyModal] = useState(false);
+  const [transferDenyReason, setTransferDenyReason] = useState('');
+  const [transferToDeny, setTransferToDeny] = useState(null);
+  const [showTransferSuccessModal, setShowTransferSuccessModal] = useState(false);
+  const [transferSuccessMessage, setTransferSuccessMessage] = useState('');
+  const [transferSuccessType, setTransferSuccessType] = useState(''); // 'approved' or 'denied'
 
   // Play notification sound function
   const playNotificationSound = () => {
@@ -100,9 +111,13 @@ function ICUManagerDashboard({
 
   useEffect(() => {
     fetchBedRequests();
+    fetchTransferRequests();
     fetchSettings();
 
-    const interval = setInterval(fetchBedRequests, 30000);
+    const interval = setInterval(() => {
+      fetchBedRequests();
+      fetchTransferRequests();
+    }, 30000);
     return () => clearInterval(interval);
   }, []);
 
@@ -118,7 +133,17 @@ function ICUManagerDashboard({
       playNotificationSound();
     };
 
+    const handleNewTransferRequest = (transfer) => {
+      fetchTransferRequests();
+      // Show popup notification for ward transfer
+      setNewTransferNotification(transfer);
+      setShowNewTransferAlert(true);
+      // Play notification sound
+      playNotificationSound();
+    };
+
     socket.on('new-bed-request', handleNewBedRequest);
+    socket.on('new-ward-transfer', handleNewTransferRequest);
 
     socket.on('bed-request-cancelled', () => {
       fetchBedRequests();
@@ -128,10 +153,16 @@ function ICUManagerDashboard({
       fetchBedRequests();
     });
 
+    socket.on('ward-transfer-updated', () => {
+      fetchTransferRequests();
+    });
+
     return () => {
       socket.off('new-bed-request', handleNewBedRequest);
+      socket.off('new-ward-transfer', handleNewTransferRequest);
       socket.off('bed-request-cancelled');
       socket.off('bed-request-fulfilled');
+      socket.off('ward-transfer-updated');
     };
   }, [socket]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -150,6 +181,15 @@ function ICUManagerDashboard({
       setSettings(response.data);
     } catch (error) {
       console.error('Error fetching settings:', error);
+    }
+  };
+
+  const fetchTransferRequests = async () => {
+    try {
+      const response = await axios.get(`${API_URL}/ward-transfer-requests?status=pending`);
+      setTransferRequests(response.data);
+    } catch (error) {
+      console.error('Error fetching transfer requests:', error);
     }
   };
 
@@ -228,6 +268,66 @@ function ICUManagerDashboard({
     } catch (error) {
       console.error('Error denying request:', error);
       alert(error.response?.data?.error || 'Failed to deny request');
+    }
+  };
+
+  // Ward Transfer Request Functions
+  const handleApproveTransfer = async (transferId) => {
+    try {
+      const response = await axios.post(`${API_URL}/ward-transfer-requests/${transferId}/approve`, {
+        reviewedBy: currentUser._id
+      });
+      
+      // Refresh transfer requests from server
+      fetchTransferRequests();
+      
+      // Extract transfer details from response
+      const { newBed, oldBed, transfer } = response.data;
+      
+      // Show success modal with detailed information
+      setTransferSuccessType('approved');
+      setTransferSuccessMessage(
+        `Ward transfer approved successfully! Patient has been moved from ${oldBed.bedNumber} (${transfer.currentWard}) to ${newBed.bedNumber} (${transfer.targetWard}).`
+      );
+      setShowTransferSuccessModal(true);
+    } catch (error) {
+      console.error('Error approving transfer:', error);
+      alert(error.response?.data?.error || 'Failed to approve transfer');
+    }
+  };
+
+  const handleDenyTransfer = async (transferId) => {
+    setTransferToDeny(transferId);
+    setShowTransferDenyModal(true);
+  };
+
+  const confirmDenyTransfer = async () => {
+    if (!transferDenyReason.trim()) {
+      alert('Please provide a reason for denial');
+      return;
+    }
+
+    try {
+      await axios.post(`${API_URL}/ward-transfer-requests/${transferToDeny}/deny`, {
+        reason: transferDenyReason.trim(),
+        reviewedBy: currentUser._id
+      });
+      
+      // Refresh transfer requests from server
+      fetchTransferRequests();
+      
+      // Close deny modal
+      setShowTransferDenyModal(false);
+      setTransferDenyReason('');
+      setTransferToDeny(null);
+      
+      // Show success modal
+      setTransferSuccessType('denied');
+      setTransferSuccessMessage('Ward transfer request has been denied. The requesting staff will be notified.');
+      setShowTransferSuccessModal(true);
+    } catch (error) {
+      console.error('Error denying transfer:', error);
+      alert(error.response?.data?.error || 'Failed to deny transfer');
     }
   };
 
@@ -453,6 +553,15 @@ function ICUManagerDashboard({
             Bed Requests
             {bedRequests.length > 0 && (
               <span className="badge">{bedRequests.length}</span>
+            )}
+          </button>
+          <button
+            className={`tab ${activeTab === 'transfers' ? 'active' : ''}`}
+            onClick={() => setActiveTab('transfers')}
+          >
+            Ward Transfer Requests
+            {transferRequests.length > 0 && (
+              <span className="badge">{transferRequests.length}</span>
             )}
           </button>
         </div>
@@ -735,7 +844,7 @@ function ICUManagerDashboard({
               </div>
             </div>
           </>
-        ) : (
+        ) : activeTab === 'requests' ? (
           /* Bed Requests Tab */
           <ResizableCard
             minWidth={600}
@@ -833,6 +942,97 @@ function ICUManagerDashboard({
                         Deny Request
                       </button>
                     </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </ResizableCard>
+        ) : (
+          /* Ward Transfer Requests Tab */
+          <ResizableCard
+            minWidth={600}
+            minHeight={400}
+            enableWidth={true}
+            enableHeight={true}
+            className="requests-container"
+          >
+            <div className="requests-header">
+              <h2>Pending Ward Transfer Requests</h2>
+              <p>Review and approve patient transfer requests between wards</p>
+            </div>
+
+            {transferRequests.length === 0 ? (
+              <div className="empty-state">
+                <div className="empty-icon">✓</div>
+                <h3>No Pending Transfer Requests</h3>
+                <p>All ward transfer requests have been processed</p>
+              </div>
+            ) : (
+              <div className="requests-grid">
+                {transferRequests.map(request => (
+                  <div key={request._id} className="request-card-large">
+                    <div className="request-card-header">
+                      <div>
+                        <span className="request-id-large">TRF-{request._id?.slice(-6).toUpperCase()}</span>
+                      </div>
+                      <div className="request-meta">
+                        <small>Requested by {request.requestedBy?.name || 'Ward Staff'}</small>
+                        <small>{formatDateTime(request.createdAt)}</small>
+                      </div>
+                    </div>
+
+                    <div className="request-card-body">
+                      <div className="info-section">
+                        <h4>Patient Details</h4>
+                        <div className="info-grid">
+                          <div className="info-item">
+                            <span className="info-label">Name:</span>
+                            <span className="info-value">{request.patientId?.name || 'Unknown Patient'}</span>
+                          </div>
+                          {request.patientId?.mrn && (
+                            <div className="info-item">
+                              <span className="info-label">MRN:</span>
+                              <span className="info-value">{request.patientId.mrn}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="info-section">
+                        <h4>Transfer Details</h4>
+                        <div className="info-grid">
+                          <div className="info-item">
+                            <span className="info-label">From Ward:</span>
+                            <span className="info-value">{request.currentWard}</span>
+                          </div>
+                          <div className="info-item">
+                            <span className="info-label">To Ward:</span>
+                            <span className="info-value" style={{ fontWeight: '600', color: '#3b82f6' }}>{request.targetWard}</span>
+                          </div>
+                          <div className="info-item" style={{ gridColumn: '1 / -1' }}>
+                            <span className="info-label">Reason:</span>
+                            <span className="info-value">{request.reason || 'No specific reason provided'}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {request.status === 'pending' && (
+                      <div className="request-card-actions">
+                        <button
+                          className="btn-view-details"
+                          onClick={() => handleApproveTransfer(request._id)}
+                        >
+                          Approve Transfer
+                        </button>
+                        <button
+                          className="btn-deny"
+                          onClick={() => handleDenyTransfer(request._id)}
+                        >
+                          Deny Request
+                        </button>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -1061,6 +1261,147 @@ function ICUManagerDashboard({
                 disabled={!denyReason.trim()}
               >
                 Confirm Denial
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* New Ward Transfer Request Notification Popup */}
+      {showNewTransferAlert && newTransferNotification && (
+        <div className="notification-overlay">
+          <div className="notification-popup">
+            <div className="notification-header">
+              <div className="notification-icon">🔄</div>
+              <div className="notification-title">
+                <h3>New Ward Transfer Request</h3>
+                <span className="notification-time">Just now</span>
+              </div>
+              <button
+                className="notification-close"
+                onClick={() => setShowNewTransferAlert(false)}
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="notification-body">
+              <div className="notification-detail">
+                <span className="detail-label">Transfer ID:</span>
+                <span className="detail-value">TRF-{newTransferNotification._id?.slice(-6).toUpperCase()}</span>
+              </div>
+              <div className="notification-detail">
+                <span className="detail-label">Patient:</span>
+                <span className="detail-value">{newTransferNotification.patientId?.name || 'Unknown'}</span>
+              </div>
+              <div className="notification-detail">
+                <span className="detail-label">From Ward:</span>
+                <span className="detail-value">{newTransferNotification.currentWard}</span>
+              </div>
+              <div className="notification-detail">
+                <span className="detail-label">To Ward:</span>
+                <span className="detail-value" style={{ fontWeight: '600', color: '#3b82f6' }}>{newTransferNotification.targetWard}</span>
+              </div>
+              <div className="notification-detail">
+                <span className="detail-label">Requested by:</span>
+                <span className="detail-value">{newTransferNotification.requestedBy?.name || 'Ward Staff'}</span>
+              </div>
+              {newTransferNotification.reason && (
+                <div className="notification-detail-full">
+                  <span className="detail-label">Reason:</span>
+                  <p className="detail-description">{newTransferNotification.reason}</p>
+                </div>
+              )}
+            </div>
+
+            <div className="notification-actions">
+              <button
+                className="btn-notification-dismiss"
+                onClick={() => setShowNewTransferAlert(false)}
+              >
+                Dismiss
+              </button>
+              <button
+                className="btn-notification-view"
+                onClick={() => {
+                  setShowNewTransferAlert(false);
+                  setActiveTab('transfers');
+                }}
+              >
+                View Transfer Requests
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Ward Transfer Deny Modal */}
+      {showTransferDenyModal && (
+        <div className="modal-overlay" onClick={() => setShowTransferDenyModal(false)}>
+          <div className="modal-content deny-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Deny Ward Transfer Request</h2>
+              <button className="modal-close" onClick={() => setShowTransferDenyModal(false)}>×</button>
+            </div>
+
+            <div className="modal-body">
+              <div className="form-group">
+                <textarea
+                  value={transferDenyReason}
+                  onChange={(e) => setTransferDenyReason(e.target.value)}
+                  placeholder="Enter the reason for denial (e.g., No available beds in target ward, Patient condition not stable for transfer, etc.)"
+                  rows="4"
+                  autoFocus
+                  className="deny-reason-textarea"
+                />
+              </div>
+            </div>
+
+            <div className="modal-actions">
+              <button
+                className="btn-secondary"
+                onClick={() => {
+                  setShowTransferDenyModal(false);
+                  setTransferDenyReason('');
+                  setTransferToDeny(null);
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                className="btn-danger"
+                onClick={confirmDenyTransfer}
+                disabled={!transferDenyReason.trim()}
+              >
+                Confirm Denial
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Ward Transfer Success/Completion Modal */}
+      {showTransferSuccessModal && (
+        <div className="modal-overlay" onClick={() => setShowTransferSuccessModal(false)}>
+          <div className="modal-content success-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div className={`success-icon ${transferSuccessType === 'approved' ? 'approved' : 'denied'}`}>
+                {transferSuccessType === 'approved' ? '✓' : '✕'}
+              </div>
+              <h2>{transferSuccessType === 'approved' ? 'Transfer Approved' : 'Transfer Denied'}</h2>
+              <button className="modal-close" onClick={() => setShowTransferSuccessModal(false)}>×</button>
+            </div>
+
+            <div className="modal-body">
+              <p className="success-message">{transferSuccessMessage}</p>
+            </div>
+
+            <div className="modal-actions">
+              <button
+                className="btn-primary"
+                onClick={() => setShowTransferSuccessModal(false)}
+              >
+                Close
               </button>
             </div>
           </div>
