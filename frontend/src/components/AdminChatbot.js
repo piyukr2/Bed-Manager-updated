@@ -11,7 +11,7 @@ const AdminChatbot = () => {
   ]);
   const [inputMessage, setInputMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [isMinimized, setIsMinimized] = useState(false);
+  const [isMinimized, setIsMinimized] = useState(true);
   const messagesEndRef = useRef(null);
   const chatContainerRef = useRef(null);
 
@@ -134,13 +134,21 @@ const AdminChatbot = () => {
           <span className="chatbot-title">Analytics Assistant</span>
           <span className="online-indicator">● Online</span>
         </div>
-        <div className="header-right">
+        <div className="header-right" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           {!isMinimized && messages.length > 1 && (
-            <button className="clear-btn" onClick={(e) => { e.stopPropagation(); clearChat(); }} title="Clear chat">
+            <button
+              className="clear-btn"
+              onClick={(e) => { e.stopPropagation(); clearChat(); }}
+              title="Clear chat"
+            >
               🗑️
             </button>
           )}
-          <button className="minimize-btn" onClick={(e) => { e.stopPropagation(); toggleMinimize(); }}>
+          <button
+            className="minimize-btn"
+            onClick={(e) => { e.stopPropagation(); toggleMinimize(); }}
+            title={isMinimized ? "Expand chat" : "Minimize chat"}
+          >
             {isMinimized ? '▲' : '▼'}
           </button>
         </div>

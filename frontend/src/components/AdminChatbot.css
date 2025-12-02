@@ -23,23 +23,32 @@
   color: white;
   padding: 16px 20px;
   border-radius: 16px 16px 0 0;
-  display: flex;
+  display: flex !important;
   justify-content: space-between;
   align-items: center;
   cursor: pointer;
   user-select: none;
+  min-height: 60px;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 10;
 }
 
 .header-left {
-  display: flex;
+  display: flex !important;
   align-items: center;
   gap: 10px;
+  flex: 1;
+  min-width: 0;
 }
 
 .header-right {
-  display: flex;
+  display: flex !important;
   align-items: center;
   gap: 8px;
+  visibility: visible !important;
+  opacity: 1 !important;
+  flex-shrink: 0;
 }
 
 .chatbot-icon {
@@ -67,10 +76,12 @@
   border-radius: 50%;
   cursor: pointer;
   font-size: 14px;
-  display: flex;
+  display: flex !important;
   align-items: center;
   justify-content: center;
   transition: background 0.2s;
+  visibility: visible !important;
+  opacity: 1 !important;
 }
 
 .clear-btn:hover,
