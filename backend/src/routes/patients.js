@@ -222,6 +222,38 @@ router.post('/', authorize('admin', 'icu_manager', 'er_staff'), async (req, res)
   }
 });
 
+// Update patient information
+router.put('/:id', authorize('admin', 'icu_manager', 'ward_staff'), async (req, res) => {
+  try {
+    const { expectedDischarge, status, estimatedStay } = req.body;
+
+    const patient = await Patient.findById(req.params.id).populate('bedId');
+    if (!patient) {
+      return res.status(404).json({ error: 'Patient not found' });
+    }
+
+    // Check role-based access
+    if (req.user.role === 'icu_manager' && patient.bedId?.ward !== req.user.ward) {
+      return res.status(403).json({ error: 'Access denied to this ward' });
+    }
+
+    // Update fields if provided
+    if (expectedDischarge) patient.expectedDischarge = new Date(expectedDischarge);
+    if (status) patient.status = status;
+    if (estimatedStay) patient.estimatedStay = estimatedStay;
+
+    await patient.save();
+
+    // Emit socket event
+    req.io.emit('patient-updated', patient);
+
+    res.json(patient);
+  } catch (error) {
+    console.error('Error updating patient:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Update patient vitals
 router.put('/:id/vitals', authorize('admin', 'icu_manager', 'ward_staff'), async (req, res) => {
   try {
@@ -465,22 +497,62 @@ router.get('/discharges/upcoming', async (req, res) => {
     const { hours = 12 } = req.query;
     const futureTime = new Date();
     futureTime.setHours(futureTime.getHours() + parseInt(hours));
-    
+
     let upcomingDischarges = await Patient.find({
       status: { $ne: 'discharged' },
       expectedDischarge: { $lte: futureTime, $gte: new Date() }
     })
     .populate('bedId')
     .sort({ expectedDischarge: 1 });
-    
+
     // Apply role-based filtering
     // Ward staff can see upcoming discharges from all wards
     // ICU managers are restricted to their ward
     if (req.user.role === 'icu_manager') {
       upcomingDischarges = upcomingDischarges.filter(p => p.bedId?.ward === req.user.ward);
     }
-    
+
     res.json(upcomingDischarges);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get discharges scheduled for today
+router.get('/discharges/today', async (req, res) => {
+  try {
+    const { ward } = req.query;
+
+    // Get start and end of today
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+
+    const endOfToday = new Date();
+    endOfToday.setHours(23, 59, 59, 999);
+
+    let query = {
+      status: { $ne: 'discharged' },
+      expectedDischarge: {
+        $gte: startOfToday,
+        $lte: endOfToday
+      }
+    };
+
+    let todayDischarges = await Patient.find(query)
+      .populate('bedId')
+      .sort({ expectedDischarge: 1 });
+
+    // Apply role-based filtering
+    if (req.user.role === 'icu_manager') {
+      todayDischarges = todayDischarges.filter(p => p.bedId?.ward === req.user.ward);
+    } else if (ward && ward !== 'All') {
+      todayDischarges = todayDischarges.filter(p => p.bedId?.ward === ward);
+    }
+
+    res.json({
+      count: todayDischarges.length,
+      discharges: todayDischarges
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
