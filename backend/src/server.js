@@ -445,264 +445,264 @@ app.get('/api/test-connection', (req, res) => {
   });
 });
 
-// Initialize sample data - UPDATED MODEL PATHS
-app.post('/api/initialize', async (req, res) => {
-  try {
-    const Bed = require('./models/Bed');
-    const Patient = require('./models/Patient');
+// // Initialize sample data - UPDATED MODEL PATHS
+// app.post('/api/initialize', async (req, res) => {
+//   try {
+//     const Bed = require('./models/Bed');
+//     const Patient = require('./models/Patient');
     
-    const userCount = await User.countDocuments();
-    if (userCount === 0) {
-      await createDefaultUsers();
-    }
+//     const userCount = await User.countDocuments();
+//     if (userCount === 0) {
+//       await createDefaultUsers();
+//     }
     
-    const existingBeds = await Bed.countDocuments();
-    if (existingBeds > 0) {
-      return res.json({ 
-        message: 'Data already exists', 
-        bedsCount: existingBeds,
-        usersCount: await User.countDocuments(),
-        note: 'Use /api/reset to clear and reinitialize'
-      });
-    }
+//     const existingBeds = await Bed.countDocuments();
+//     if (existingBeds > 0) {
+//       return res.json({ 
+//         message: 'Data already exists', 
+//         bedsCount: existingBeds,
+//         usersCount: await User.countDocuments(),
+//         note: 'Use /api/reset to clear and reinitialize'
+//       });
+//     }
     
-    // Ward to floor mapping: Emergency (Ground/0), ICU (1), Cardiology (2), General Ward (3)
-    const wards = ['Emergency', 'ICU', 'Cardiology', 'General Ward'];
-    const floors = [0, 1, 2, 3]; // Ground floor = 0
-    const beds = [];
+//     // Ward to floor mapping: Emergency (Ground/0), ICU (1), Cardiology (2), General Ward (3)
+//     const wards = ['Emergency', 'ICU', 'Cardiology', 'General Ward'];
+//     const floors = [0, 1, 2, 3]; // Ground floor = 0
+//     const beds = [];
     
-    for (let i = 1; i <= 60; i++) {
-      const wardIndex = Math.floor((i - 1) / 15);
-      const ward = wards[wardIndex];
+//     for (let i = 1; i <= 60; i++) {
+//       const wardIndex = Math.floor((i - 1) / 15);
+//       const ward = wards[wardIndex];
       
-      let equipmentType = 'Standard';
-      if (ward === 'ICU') {
-        equipmentType = i % 3 === 0 ? 'Ventilator' : 'ICU Monitor';
-      } else if (ward === 'Cardiology') {
-        equipmentType = 'Cardiac Monitor';
-      } else if (ward === 'Emergency') {
-        equipmentType = i % 2 === 0 ? 'Ventilator' : 'Standard';
-      }
+//       let equipmentType = 'Standard';
+//       if (ward === 'ICU') {
+//         equipmentType = i % 3 === 0 ? 'Ventilator' : 'ICU Monitor';
+//       } else if (ward === 'Cardiology') {
+//         equipmentType = 'Cardiac Monitor';
+//       } else if (ward === 'Emergency') {
+//         equipmentType = i % 2 === 0 ? 'Ventilator' : 'Standard';
+//       }
       
-      let status = 'available';
-      if (i <= 35) status = 'occupied';
-      else if (i <= 38) status = 'cleaning';
-      else if (i <= 40) status = 'reserved';
+//       let status = 'available';
+//       if (i <= 35) status = 'occupied';
+//       else if (i <= 38) status = 'cleaning';
+//       else if (i <= 40) status = 'reserved';
       
-      const bedNumber = `BED-${String(i).padStart(3, '0')}`;
-      const existingBed = await Bed.findOne({ bedNumber });
+//       const bedNumber = `BED-${String(i).padStart(3, '0')}`;
+//       const existingBed = await Bed.findOne({ bedNumber });
       
-      if (!existingBed) {
-        beds.push({
-          bedNumber,
-          ward,
-          status: status,
-          equipmentType,
-          location: {
-            floor: floors[wardIndex],
-            section: String.fromCharCode(65 + Math.floor((i - 1) % 15 / 5)),
-            roomNumber: `R${String(Math.floor((i - 1) % 5) + 1).padStart(2, '0')}`
-          },
-          lastCleaned: status === 'available' ? new Date() : null
-        });
-      }
-    }
+//       if (!existingBed) {
+//         beds.push({
+//           bedNumber,
+//           ward,
+//           status: status,
+//           equipmentType,
+//           location: {
+//             floor: floors[wardIndex],
+//             section: String.fromCharCode(65 + Math.floor((i - 1) % 15 / 5)),
+//             roomNumber: `R${String(Math.floor((i - 1) % 5) + 1).padStart(2, '0')}`
+//           },
+//           lastCleaned: status === 'available' ? new Date() : null
+//         });
+//       }
+//     }
     
-    const createdBeds = beds.length > 0 ? await Bed.insertMany(beds) : [];
+//     const createdBeds = beds.length > 0 ? await Bed.insertMany(beds) : [];
     
-    const occupiedBeds = createdBeds.filter(b => b.status === 'occupied');
-    const samplePatients = [];
+//     const occupiedBeds = createdBeds.filter(b => b.status === 'occupied');
+//     const samplePatients = [];
     
-    for (let i = 0; i < Math.min(10, occupiedBeds.length); i++) {
-      const bed = occupiedBeds[i];
-      const admissionDate = new Date();
-      admissionDate.setHours(admissionDate.getHours() - Math.floor(Math.random() * 48));
+//     for (let i = 0; i < Math.min(10, occupiedBeds.length); i++) {
+//       const bed = occupiedBeds[i];
+//       const admissionDate = new Date();
+//       admissionDate.setHours(admissionDate.getHours() - Math.floor(Math.random() * 48));
       
-      const patientId = `PAT-${String(i + 1).padStart(4, '0')}`;
+//       const patientId = `PAT-${String(i + 1).padStart(4, '0')}`;
       
-      const existingPatient = await Patient.findOne({ patientId });
+//       const existingPatient = await Patient.findOne({ patientId });
       
-      if (!existingPatient) {
-        samplePatients.push({
-          patientId,
-          name: `Patient ${i + 1}`,
-          age: 20 + Math.floor(Math.random() * 60),
-          gender: i % 2 === 0 ? 'Male' : 'Female',
-          department: bed.ward === 'ICU' ? 'Critical Care' : bed.ward,
-          reasonForAdmission: 'Sample admission for testing',
-          estimatedStay: 24 + Math.floor(Math.random() * 72),
-          admissionDate: admissionDate,
-          bedId: bed._id,
-          status: 'admitted'
-        });
-      }
-    }
+//       if (!existingPatient) {
+//         samplePatients.push({
+//           patientId,
+//           name: `Patient ${i + 1}`,
+//           age: 20 + Math.floor(Math.random() * 60),
+//           gender: i % 2 === 0 ? 'Male' : 'Female',
+//           department: bed.ward === 'ICU' ? 'Critical Care' : bed.ward,
+//           reasonForAdmission: 'Sample admission for testing',
+//           estimatedStay: 24 + Math.floor(Math.random() * 72),
+//           admissionDate: admissionDate,
+//           bedId: bed._id,
+//           status: 'admitted'
+//         });
+//       }
+//     }
     
-    if (samplePatients.length > 0) {
-      await Patient.insertMany(samplePatients);
-    }
+//     if (samplePatients.length > 0) {
+//       await Patient.insertMany(samplePatients);
+//     }
     
-    // Populate 30 days of historical occupancy data with ward-wise breakdown
-    console.log('📊 Generating 30 days of historical occupancy data...');
-    const OccupancyHistory = require('./models/OccupancyHistory');
+//     // Populate 30 days of historical occupancy data with ward-wise breakdown
+//     console.log('📊 Generating 30 days of historical occupancy data...');
+//     const OccupancyHistory = require('./models/OccupancyHistory');
 
-    const historicalData = [];
-    const now = new Date();
-    const totalBedsCount = 60; // 15 beds per ward x 4 wards
-    const bedsPerWard = 15;
-    // Reuse the wards array from above
+//     const historicalData = [];
+//     const now = new Date();
+//     const totalBedsCount = 60; // 15 beds per ward x 4 wards
+//     const bedsPerWard = 15;
+//     // Reuse the wards array from above
 
-    for (let daysAgo = 30; daysAgo >= 1; daysAgo--) {
-      const timestamp = new Date(now);
-      timestamp.setDate(timestamp.getDate() - daysAgo);
-      timestamp.setHours(12, 0, 0, 0); // Set to noon for each day
+//     for (let daysAgo = 30; daysAgo >= 1; daysAgo--) {
+//       const timestamp = new Date(now);
+//       timestamp.setDate(timestamp.getDate() - daysAgo);
+//       timestamp.setHours(12, 0, 0, 0); // Set to noon for each day
 
-      const dayOfWeek = timestamp.getDay(); // 0 = Sunday, 6 = Saturday
+//       const dayOfWeek = timestamp.getDay(); // 0 = Sunday, 6 = Saturday
 
-      // Generate hourly data for each day (24 hours)
-      const hourlyDataArray = [];
-      let dailyTotalOccupancy = 0;
-      let maxHourlyOccupancy = 0;
+//       // Generate hourly data for each day (24 hours)
+//       const hourlyDataArray = [];
+//       let dailyTotalOccupancy = 0;
+//       let maxHourlyOccupancy = 0;
 
-      for (let hour = 0; hour < 24; hour++) {
-        const hourlyWardStats = [];
-        let hourlyTotalOccupied = 0;
-        let hourlyTotalAvailable = 0;
-        let hourlyTotalCleaning = 0;
-        let hourlyTotalReserved = 0;
+//       for (let hour = 0; hour < 24; hour++) {
+//         const hourlyWardStats = [];
+//         let hourlyTotalOccupied = 0;
+//         let hourlyTotalAvailable = 0;
+//         let hourlyTotalCleaning = 0;
+//         let hourlyTotalReserved = 0;
 
-        wards.forEach((wardName) => {
-          // Base occupancy with weekly cycle (varies by ward)
-          let baseOccupancy = 0.70 + (Math.sin((daysAgo / 7) * Math.PI) * 0.10);
+//         wards.forEach((wardName) => {
+//           // Base occupancy with weekly cycle (varies by ward)
+//           let baseOccupancy = 0.70 + (Math.sin((daysAgo / 7) * Math.PI) * 0.10);
 
-          // Ward-specific adjustments
-          if (wardName === 'ICU') {
-            baseOccupancy += 0.10; // ICU tends to be busier
-          } else if (wardName === 'Emergency') {
-            baseOccupancy += 0.05; // Emergency also busy
-          } else if (wardName === 'General Ward') {
-            baseOccupancy -= 0.05; // General ward slightly less busy
-          }
+//           // Ward-specific adjustments
+//           if (wardName === 'ICU') {
+//             baseOccupancy += 0.10; // ICU tends to be busier
+//           } else if (wardName === 'Emergency') {
+//             baseOccupancy += 0.05; // Emergency also busy
+//           } else if (wardName === 'General Ward') {
+//             baseOccupancy -= 0.05; // General ward slightly less busy
+//           }
 
-          // Weekend effect (lower occupancy on weekends)
-          if (dayOfWeek === 0 || dayOfWeek === 6) {
-            baseOccupancy -= 0.08;
-          }
+//           // Weekend effect (lower occupancy on weekends)
+//           if (dayOfWeek === 0 || dayOfWeek === 6) {
+//             baseOccupancy -= 0.08;
+//           }
 
-          // Monday spike (admissions from weekend)
-          if (dayOfWeek === 1) {
-            baseOccupancy += 0.12;
-          }
+//           // Monday spike (admissions from weekend)
+//           if (dayOfWeek === 1) {
+//             baseOccupancy += 0.12;
+//           }
 
-          // Hourly patterns (peak hours: 8-10 AM and 6-9 PM)
-          let hourlyModifier = 0;
-          if (hour >= 8 && hour <= 10) {
-            hourlyModifier = 0.08 + (Math.random() * 0.05); // Morning peak
-          } else if (hour >= 18 && hour <= 21) {
-            hourlyModifier = 0.12 + (Math.random() * 0.08); // Evening peak (highest)
-          } else if (hour >= 0 && hour <= 5) {
-            hourlyModifier = -0.10 - (Math.random() * 0.05); // Night lull
-          } else {
-            hourlyModifier = (Math.random() - 0.5) * 0.08; // Normal variation
-          }
+//           // Hourly patterns (peak hours: 8-10 AM and 6-9 PM)
+//           let hourlyModifier = 0;
+//           if (hour >= 8 && hour <= 10) {
+//             hourlyModifier = 0.08 + (Math.random() * 0.05); // Morning peak
+//           } else if (hour >= 18 && hour <= 21) {
+//             hourlyModifier = 0.12 + (Math.random() * 0.08); // Evening peak (highest)
+//           } else if (hour >= 0 && hour <= 5) {
+//             hourlyModifier = -0.10 - (Math.random() * 0.05); // Night lull
+//           } else {
+//             hourlyModifier = (Math.random() - 0.5) * 0.08; // Normal variation
+//           }
 
-          // Random events (hospital surges, seasonal patterns)
-          const randomEvent = Math.random();
-          let eventModifier = 0;
-          if (randomEvent > 0.95) {
-            eventModifier = 0.15 + (Math.random() * 0.10);
-          } else if (randomEvent < 0.05) {
-            eventModifier = -0.10 - (Math.random() * 0.08);
-          }
+//           // Random events (hospital surges, seasonal patterns)
+//           const randomEvent = Math.random();
+//           let eventModifier = 0;
+//           if (randomEvent > 0.95) {
+//             eventModifier = 0.15 + (Math.random() * 0.10);
+//           } else if (randomEvent < 0.05) {
+//             eventModifier = -0.10 - (Math.random() * 0.08);
+//           }
 
-          // Seasonal trend
-          const monthEffect = Math.sin((daysAgo / 30) * Math.PI) * 0.05;
+//           // Seasonal trend
+//           const monthEffect = Math.sin((daysAgo / 30) * Math.PI) * 0.05;
 
-          const occupancyRate = Math.max(0.45, Math.min(0.98, baseOccupancy + hourlyModifier + eventModifier + monthEffect));
+//           const occupancyRate = Math.max(0.45, Math.min(0.98, baseOccupancy + hourlyModifier + eventModifier + monthEffect));
 
-          const occupied = Math.floor(bedsPerWard * occupancyRate);
-          const cleaningRate = 0.03 + (Math.random() * 0.04);
-          const cleaning = Math.floor(bedsPerWard * cleaningRate);
-          const reservedRate = 0.02 + (Math.random() * 0.05);
-          const reserved = Math.floor(bedsPerWard * reservedRate);
-          const available = Math.max(0, bedsPerWard - occupied - cleaning - reserved);
+//           const occupied = Math.floor(bedsPerWard * occupancyRate);
+//           const cleaningRate = 0.03 + (Math.random() * 0.04);
+//           const cleaning = Math.floor(bedsPerWard * cleaningRate);
+//           const reservedRate = 0.02 + (Math.random() * 0.05);
+//           const reserved = Math.floor(bedsPerWard * reservedRate);
+//           const available = Math.max(0, bedsPerWard - occupied - cleaning - reserved);
 
-          hourlyWardStats.push({
-            ward: wardName,
-            total: bedsPerWard,
-            occupied,
-            available,
-            cleaning,
-            reserved,
-            occupancyRate: parseFloat((occupancyRate * 100).toFixed(1))
-          });
+//           hourlyWardStats.push({
+//             ward: wardName,
+//             total: bedsPerWard,
+//             occupied,
+//             available,
+//             cleaning,
+//             reserved,
+//             occupancyRate: parseFloat((occupancyRate * 100).toFixed(1))
+//           });
 
-          hourlyTotalOccupied += occupied;
-          hourlyTotalAvailable += available;
-          hourlyTotalCleaning += cleaning;
-          hourlyTotalReserved += reserved;
-        });
+//           hourlyTotalOccupied += occupied;
+//           hourlyTotalAvailable += available;
+//           hourlyTotalCleaning += cleaning;
+//           hourlyTotalReserved += reserved;
+//         });
 
-        const hourlyOccupancyRate = parseFloat(((hourlyTotalOccupied / totalBedsCount) * 100).toFixed(1));
-        dailyTotalOccupancy += hourlyOccupancyRate;
-        maxHourlyOccupancy = Math.max(maxHourlyOccupancy, hourlyOccupancyRate);
+//         const hourlyOccupancyRate = parseFloat(((hourlyTotalOccupied / totalBedsCount) * 100).toFixed(1));
+//         dailyTotalOccupancy += hourlyOccupancyRate;
+//         maxHourlyOccupancy = Math.max(maxHourlyOccupancy, hourlyOccupancyRate);
 
-        hourlyDataArray.push({
-          hour,
-          totalBeds: totalBedsCount,
-          occupied: hourlyTotalOccupied,
-          available: hourlyTotalAvailable,
-          cleaning: hourlyTotalCleaning,
-          reserved: hourlyTotalReserved,
-          occupancyRate: hourlyOccupancyRate,
-          wardStats: hourlyWardStats
-        });
-      }
+//         hourlyDataArray.push({
+//           hour,
+//           totalBeds: totalBedsCount,
+//           occupied: hourlyTotalOccupied,
+//           available: hourlyTotalAvailable,
+//           cleaning: hourlyTotalCleaning,
+//           reserved: hourlyTotalReserved,
+//           occupancyRate: hourlyOccupancyRate,
+//           wardStats: hourlyWardStats
+//         });
+//       }
 
-      // Calculate daily averages from hourly data
-      const dailyAvgOccupancy = parseFloat((dailyTotalOccupancy / 24).toFixed(1));
+//       // Calculate daily averages from hourly data
+//       const dailyAvgOccupancy = parseFloat((dailyTotalOccupancy / 24).toFixed(1));
 
-      // Use noon data for the daily summary ward stats
-      const noonData = hourlyDataArray[12];
+//       // Use noon data for the daily summary ward stats
+//       const noonData = hourlyDataArray[12];
 
-      historicalData.push({
-        timestamp,
-        totalBeds: totalBedsCount,
-        occupied: noonData.occupied,
-        available: noonData.available,
-        cleaning: noonData.cleaning,
-        reserved: noonData.reserved,
-        occupancyRate: dailyAvgOccupancy,
-        wardStats: noonData.wardStats,
-        peakHour: maxHourlyOccupancy >= 85,
-        hourlyData: hourlyDataArray
-      });
-    }
+//       historicalData.push({
+//         timestamp,
+//         totalBeds: totalBedsCount,
+//         occupied: noonData.occupied,
+//         available: noonData.available,
+//         cleaning: noonData.cleaning,
+//         reserved: noonData.reserved,
+//         occupancyRate: dailyAvgOccupancy,
+//         wardStats: noonData.wardStats,
+//         peakHour: maxHourlyOccupancy >= 85,
+//         hourlyData: hourlyDataArray
+//       });
+//     }
 
-    if (historicalData.length > 0) {
-      await OccupancyHistory.insertMany(historicalData);
-      console.log(`✅ Created ${historicalData.length} historical occupancy records with ward-wise data`);
-    }
+//     if (historicalData.length > 0) {
+//       await OccupancyHistory.insertMany(historicalData);
+//       console.log(`✅ Created ${historicalData.length} historical occupancy records with ward-wise data`);
+//     }
 
-    io.emit('data-initialized', {
-      bedsCreated: beds.length,
-      patientsCreated: samplePatients.length,
-      historicalRecords: historicalData.length
-    });
+//     io.emit('data-initialized', {
+//       bedsCreated: beds.length,
+//       patientsCreated: samplePatients.length,
+//       historicalRecords: historicalData.length
+//     });
 
-    res.json({
-      message: 'Sample data initialized successfully',
-      bedsCreated: beds.length,
-      patientsCreated: samplePatients.length,
-      historicalRecords: historicalData.length,
-      usersCount: await User.countDocuments(),
-      timestamp: new Date()
-    });
-  } catch (error) {
-    console.error('Initialization error:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
+//     res.json({
+//       message: 'Sample data initialized successfully',
+//       bedsCreated: beds.length,
+//       patientsCreated: samplePatients.length,
+//       historicalRecords: historicalData.length,
+//       usersCount: await User.countDocuments(),
+//       timestamp: new Date()
+//     });
+//   } catch (error) {
+//     console.error('Initialization error:', error);
+//     res.status(500).json({ error: error.message });
+//   }
+// });
 
 // Reset database - UPDATED MODEL PATHS
 app.post('/api/reset', async (req, res) => {
