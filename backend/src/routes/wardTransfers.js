@@ -147,16 +147,16 @@ router.post('/:id/approve', async (req, res) => {
       });
     }
 
-    // Perform the actual transfer
+    // Perform the actual transfer - IMMEDIATE EXECUTION
     const patient = transfer.patientId;
 
-    // Release the current bed (mark as cleaning)
+    // Release the current bed (mark as cleaning immediately)
     currentBed.status = 'cleaning';
     currentBed.patientId = null;
     currentBed.notes = `Patient transferred to ${transfer.targetWard} - ${targetBed.bedNumber}`;
     await currentBed.save();
 
-    // Assign patient to new bed
+    // Assign patient to new bed (mark as occupied immediately)
     targetBed.status = 'occupied';
     targetBed.patientId = patient._id;
     targetBed.notes = `Patient transferred from ${transfer.currentWard} - ${currentBed.bedNumber}`;
@@ -166,28 +166,36 @@ router.post('/:id/approve', async (req, res) => {
     patient.bedId = targetBed._id;
     await patient.save();
 
-    // Update transfer status
-    transfer.status = 'approved';
+    // Update transfer status to 'completed' (since transfer happens immediately)
+    transfer.status = 'completed';
     transfer.reviewedBy = reviewedBy;
     transfer.reviewedAt = new Date();
     transfer.newBedId = targetBed._id;
+    transfer.completedAt = new Date();
     if (notes) transfer.notes = notes;
 
     await transfer.save();
 
     // Emit socket events for real-time updates
     if (req.io) {
-      // Notify about the transfer update
+      // Notify about the transfer completion (immediate)
       req.io.emit('ward-transfer-updated', {
-        action: 'approved',
+        action: 'completed',
         transfer: transfer
+      });
+
+      // Notify specifically about approval with complete details
+      req.io.emit('ward-transfer-approved', {
+        transfer: transfer,
+        newBed: targetBed,
+        oldBed: currentBed
       });
 
       // Notify about bed updates (both old and new)
       req.io.emit('bed-updated', currentBed);
       req.io.emit('bed-updated', targetBed);
 
-      // Notify about patient update
+      // Notify about patient transfer (immediate)
       req.io.emit('patient-transferred', {
         patient: patient,
         fromBed: currentBed,
@@ -198,7 +206,7 @@ router.post('/:id/approve', async (req, res) => {
     }
 
     res.json({ 
-      message: 'Transfer request approved and patient transferred successfully', 
+      message: 'Transfer approved and completed successfully. Patient immediately transferred to new bed.', 
       transfer,
       newBed: targetBed,
       oldBed: currentBed
@@ -240,6 +248,11 @@ router.post('/:id/deny', async (req, res) => {
     if (req.io) {
       req.io.emit('ward-transfer-updated', {
         action: 'denied',
+        transfer: transfer
+      });
+
+      // Notify specifically about denial
+      req.io.emit('ward-transfer-denied', {
         transfer: transfer
       });
     }

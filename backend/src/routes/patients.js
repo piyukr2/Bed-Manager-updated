@@ -274,6 +274,67 @@ router.put('/:id/vitals', authorize('admin', 'icu_manager', 'ward_staff'), async
   }
 });
 
+// Update patient (general update for fields like expectedDischarge)
+router.put('/:id', authorize('admin', 'icu_manager', 'ward_staff'), async (req, res) => {
+  try {
+    const patient = await Patient.findById(req.params.id).populate('bedId');
+    if (!patient) {
+      return res.status(404).json({ error: 'Patient not found' });
+    }
+    
+    // Check role-based access
+    // Ward staff can update patients in all wards
+    // ICU managers are restricted to their ward
+    if (req.user.role === 'icu_manager' && patient.bedId?.ward !== req.user.ward) {
+      return res.status(403).json({ error: 'Access denied to this ward' });
+    }
+    
+    // Update allowed fields
+    const { expectedDischarge, estimatedStay, reasonForAdmission, contactNumber, emergencyContact } = req.body;
+    
+    if (expectedDischarge !== undefined) {
+      // Validate that discharge date is not in the past
+      const dischargeDate = new Date(expectedDischarge);
+      const now = new Date();
+      if (dischargeDate < now) {
+        return res.status(400).json({ 
+          error: 'Expected discharge date cannot be in the past',
+          suggestion: 'Please select a future date and time'
+        });
+      }
+      
+      patient.expectedDischarge = expectedDischarge;
+      
+      // Create info alert for discharge date change
+      await Alert.create({
+        type: 'info',
+        message: `Expected discharge updated for ${patient.name} in ${patient.bedId?.bedNumber || 'bed'}: ${new Date(expectedDischarge).toLocaleString()}`,
+        ward: patient.bedId?.ward,
+        bedId: patient.bedId?._id,
+        priority: 2
+      });
+    }
+    
+    if (estimatedStay !== undefined) patient.estimatedStay = estimatedStay;
+    if (reasonForAdmission !== undefined) patient.reasonForAdmission = reasonForAdmission;
+    if (contactNumber !== undefined) patient.contactNumber = contactNumber;
+    if (emergencyContact !== undefined) patient.emergencyContact = emergencyContact;
+    
+    await patient.save();
+    
+    const updatedPatient = await Patient.findById(patient._id).populate('bedId');
+    
+    // Emit socket event
+    req.io.emit('patient-updated', updatedPatient);
+    req.io.to(`ward-${patient.bedId?.ward}`).emit('ward-patient-updated', updatedPatient);
+    
+    res.json(updatedPatient);
+  } catch (error) {
+    console.error('Error updating patient:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Transfer patient
 router.post('/:id/transfer', authorize('admin', 'icu_manager', 'ward_staff'), async (req, res) => {
   try {

@@ -27,10 +27,60 @@ function WardStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socke
     reason: ''
   });
   const [availableWards, setAvailableWards] = useState([]);
+  const [pendingTransfers, setPendingTransfers] = useState([]);
+  const [showTransferStatusModal, setShowTransferStatusModal] = useState(false);
+  const [transferStatusData, setTransferStatusData] = useState(null);
+  
+  // Notification states
+  const [notification, setNotification] = useState({ show: false, type: '', message: '' });
+  const [validationError, setValidationError] = useState('');
   
   // Discharge Date Editing states
   const [editingDischargeDate, setEditingDischargeDate] = useState(null);
   const [newDischargeDate, setNewDischargeDate] = useState('');
+  
+  // Confirmation modal states
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [confirmModalData, setConfirmModalData] = useState({ title: '', message: '', onConfirm: null });
+
+  // Play notification sound function
+  const playNotificationSound = () => {
+    try {
+      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      
+      const playTone = (frequency, startTime, duration) => {
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        
+        oscillator.frequency.value = frequency;
+        oscillator.type = 'sine';
+        
+        gainNode.gain.setValueAtTime(0, startTime);
+        gainNode.gain.linearRampToValueAtTime(0.3, startTime + 0.01);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, startTime + duration);
+        
+        oscillator.start(startTime);
+        oscillator.stop(startTime + duration);
+      };
+
+      const now = audioContext.currentTime;
+      playTone(800, now, 0.15);
+      playTone(1000, now + 0.15, 0.15);
+      playTone(1200, now + 0.3, 0.2);
+    } catch (error) {
+      console.error('Error playing notification sound:', error);
+    }
+  };
+
+  const showNotification = (type, message) => {
+    setNotification({ show: true, type, message });
+    setTimeout(() => {
+      setNotification({ show: false, type: '', message: '' });
+    }, 5000);
+  };
 
   const fetchData = async () => {
     try {
@@ -56,10 +106,23 @@ function WardStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socke
     }
   };
 
+  const fetchPendingTransfers = async () => {
+    try {
+      const response = await axios.get(`${API_URL}/ward-transfer-requests?status=pending`);
+      setPendingTransfers(response.data);
+    } catch (error) {
+      console.error('Error fetching pending transfers:', error);
+    }
+  };
+
   useEffect(() => {
     fetchData();
+    fetchPendingTransfers();
 
-    const interval = setInterval(fetchData, 30000);
+    const interval = setInterval(() => {
+      fetchData();
+      fetchPendingTransfers();
+    }, 30000);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedWard]); // Re-fetch when selected ward changes
@@ -90,10 +153,37 @@ function WardStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socke
 
     socket.on('ward-transfer-updated', () => {
       fetchData();
+      fetchPendingTransfers();
     });
 
     socket.on('patient-transferred', () => {
       fetchData();
+      fetchPendingTransfers();
+    });
+
+    // Listen for transfer approved/denied events
+    socket.on('ward-transfer-approved', (data) => {
+      playNotificationSound();
+      setTransferStatusData({
+        type: 'approved',
+        transfer: data.transfer,
+        newBed: data.newBed,
+        oldBed: data.oldBed
+      });
+      setShowTransferStatusModal(true);
+      fetchData();
+      fetchPendingTransfers();
+    });
+
+    socket.on('ward-transfer-denied', (data) => {
+      playNotificationSound();
+      setTransferStatusData({
+        type: 'denied',
+        transfer: data.transfer,
+        reason: data.transfer.denyReason
+      });
+      setShowTransferStatusModal(true);
+      fetchPendingTransfers();
     });
 
     return () => {
@@ -104,6 +194,8 @@ function WardStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socke
       socket.off('bed-request-fulfilled');
       socket.off('ward-transfer-updated');
       socket.off('patient-transferred');
+      socket.off('ward-transfer-approved');
+      socket.off('ward-transfer-denied');
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [socket, selectedWard]);
@@ -121,9 +213,10 @@ function WardStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socke
     try {
       await axios.put(`${API_URL}/beds/${bedId}`, { status: newStatus });
       fetchData();
+      showNotification('success', '✓ Bed status updated successfully');
     } catch (error) {
       console.error('Error updating bed status:', error);
-      alert(error.response?.data?.error || 'Failed to update bed status');
+      showNotification('error', error.response?.data?.error || 'Failed to update bed status');
     } finally {
       setLoading(false);
     }
@@ -142,10 +235,11 @@ function WardStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socke
       
       setShowDischargeModal(false);
       setBedToDischarge(null);
+      showNotification('success', '✓ Patient discharged successfully. Bed marked for cleaning.');
       fetchData();
     } catch (error) {
       console.error('Error discharging patient:', error);
-      alert(error.response?.data?.error || 'Failed to discharge patient');
+      showNotification('error', error.response?.data?.error || 'Failed to discharge patient');
     } finally {
       setLoading(false);
     }
@@ -193,19 +287,20 @@ function WardStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socke
 
   const submitTransferRequest = async (e) => {
     e.preventDefault();
+    setValidationError('');
 
     if (!transferDetails.targetWard) {
-      alert('Please select a target ward');
+      setValidationError('Please select a target ward');
       return;
     }
 
     if (transferDetails.targetWard === 'Emergency') {
-      alert('Patients cannot be transferred TO Emergency ward');
+      setValidationError('Patients cannot be transferred TO Emergency ward');
       return;
     }
 
     if (transferDetails.currentWard === transferDetails.targetWard) {
-      alert('Target ward must be different from current ward');
+      setValidationError('Target ward must be different from current ward');
       return;
     }
 
@@ -229,12 +324,14 @@ function WardStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socke
         targetWard: '',
         reason: ''
       });
+      setValidationError('');
 
-      alert('✓ Ward transfer request submitted successfully! The ICU Manager will review it.');
-      fetchData(); // Refresh data
+      showNotification('success', '✓ Ward transfer request submitted successfully! The ICU Manager will review it.');
+      fetchData();
+      fetchPendingTransfers();
     } catch (error) {
       console.error('Error submitting transfer request:', error);
-      alert(error.response?.data?.error || 'Failed to submit transfer request');
+      setValidationError(error.response?.data?.error || 'Failed to submit transfer request');
     }
   };
 
@@ -242,14 +339,25 @@ function WardStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socke
   const handleEditDischargeDate = (patientId, currentDate) => {
     setEditingDischargeDate(patientId);
     // Format the date for input field (YYYY-MM-DDTHH:MM)
-    const date = currentDate ? new Date(currentDate) : new Date();
+    // Use current date/time if the existing date is in the past
+    const now = new Date();
+    const existingDate = currentDate ? new Date(currentDate) : now;
+    const date = existingDate > now ? existingDate : now;
     const formatted = date.toISOString().slice(0, 16);
     setNewDischargeDate(formatted);
   };
 
   const saveDischargeDate = async (patientId) => {
     if (!newDischargeDate) {
-      alert('Please select a discharge date');
+      showNotification('error', 'Please select a discharge date');
+      return;
+    }
+
+    // Validate that the selected date is not in the past
+    const selectedDate = new Date(newDischargeDate);
+    const now = new Date();
+    if (selectedDate < now) {
+      showNotification('error', 'Discharge date cannot be in the past');
       return;
     }
 
@@ -260,10 +368,11 @@ function WardStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socke
 
       setEditingDischargeDate(null);
       setNewDischargeDate('');
-      fetchData(); // Refresh the data
+      showNotification('success', '✓ Discharge date updated successfully');
+      fetchData();
     } catch (error) {
       console.error('Error updating discharge date:', error);
-      alert(error.response?.data?.error || 'Failed to update discharge date');
+      showNotification('error', error.response?.data?.error || 'Failed to update discharge date');
     }
   };
 
@@ -273,21 +382,25 @@ function WardStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socke
   };
 
   const acknowledgeReservation = async (bedId) => {
-    if (!window.confirm('Acknowledge that this bed is ready for the incoming patient?')) return;
+    setConfirmModalData({
+      title: 'Acknowledge Bed Ready',
+      message: 'Acknowledge that this bed is ready for the incoming patient?',
+      onConfirm: async () => {
+        try {
+          await axios.put(`${API_URL}/beds/${bedId}`, {
+            notes: 'Bed prepared and ready for patient admission'
+          });
 
-    try {
-      await axios.put(`${API_URL}/beds/${bedId}`, {
-        notes: 'Bed prepared and ready for patient admission'
-      });
-
-      // Show success feedback
-      alert('✓ Bed acknowledged! It has been marked as ready for patient admission.');
-
-      fetchData();
-    } catch (error) {
-      console.error('Error acknowledging reservation:', error);
-      alert(error.response?.data?.error || 'Failed to acknowledge reservation');
-    }
+          showNotification('success', '✓ Bed acknowledged! It has been marked as ready for patient admission.');
+          setShowConfirmModal(false);
+          fetchData();
+        } catch (error) {
+          console.error('Error acknowledging reservation:', error);
+          showNotification('error', error.response?.data?.error || 'Failed to acknowledge reservation');
+        }
+      }
+    });
+    setShowConfirmModal(true);
   };
 
   const getStatusColor = (status) => {
@@ -329,6 +442,14 @@ function WardStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socke
   };
 
   const filteredStats = getFilteredStats();
+
+  const hasPendingTransfer = (bedId, patientId) => {
+    return pendingTransfers.some(transfer => 
+      (transfer.bedId === bedId || transfer.bedId?._id === bedId) &&
+      (transfer.patientId === patientId || transfer.patientId?._id === patientId) &&
+      transfer.status === 'pending'
+    );
+  };
 
   const getBedActions = (bed) => {
     const actions = [];
@@ -674,17 +795,55 @@ function WardStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socke
                               {formatDateTime(bed.patientId.admissionDate)}
                             </span>
                           </div>
-                          <div className="bed-detail-row">
+                          <div className="bed-detail-row" style={{ 
+                            flexDirection: editingDischargeDate === bed.patientId._id ? 'column' : 'row',
+                            alignItems: editingDischargeDate === bed.patientId._id ? 'stretch' : 'flex-start'
+                          }}>
                             <span className="detail-label">Expected Discharge:</span>
                             {editingDischargeDate === bed.patientId._id ? (
-                              <div className="discharge-edit-container">
+                              <div className="discharge-edit-container" style={{
+                                backgroundColor: 'var(--surface-panel)',
+                                padding: '12px',
+                                borderRadius: '8px',
+                                border: '1px solid var(--border-emphasis)',
+                                marginTop: '6px',
+                                boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
+                                maxWidth: '100%'
+                              }}>
                                 <input
                                   type="datetime-local"
                                   value={newDischargeDate}
-                                  onChange={(e) => setNewDischargeDate(e.target.value)}
+                                  min={(() => {
+                                    const now = new Date();
+                                    return now.toISOString().slice(0, 16);
+                                  })()}
+                                  onChange={(e) => {
+                                    const selectedDate = new Date(e.target.value);
+                                    const now = new Date();
+                                    
+                                    // If selected date/time is in the past, set to current time
+                                    if (selectedDate < now) {
+                                      setNewDischargeDate(now.toISOString().slice(0, 16));
+                                      showNotification('error', 'Cannot select past date/time. Set to current time.');
+                                    } else {
+                                      setNewDischargeDate(e.target.value);
+                                    }
+                                  }}
                                   className="discharge-date-input"
+                                  style={{
+                                    width: '100%',
+                                    padding: '8px 10px',
+                                    fontSize: '0.9rem',
+                                    backgroundColor: 'var(--surface-card)',
+                                    color: 'var(--text-primary)',
+                                    border: '1px solid var(--border-soft)',
+                                    borderRadius: '6px',
+                                    boxSizing: 'border-box'
+                                  }}
                                 />
-                                <div className="discharge-edit-actions">
+                                <div className="discharge-edit-actions" style={{
+                                  marginTop: '8px'
+                                }}>
                                   <button
                                     className="btn-save-discharge"
                                     onClick={() => saveDischargeDate(bed.patientId._id)}
@@ -747,12 +906,22 @@ function WardStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socke
                           ))}
 
                           {bed.status === 'occupied' && bed.patientId && (
-                            <button
-                              className="btn-transfer-request"
-                              onClick={() => handleRequestTransfer(bed)}
-                            >
-                              Ward Transfer
-                            </button>
+                            hasPendingTransfer(bed._id, bed.patientId._id) ? (
+                              <button
+                                className="btn-transfer-pending"
+                                disabled
+                                title="Transfer request pending approval"
+                              >
+                                Transfer Pending ⏳
+                              </button>
+                            ) : (
+                              <button
+                                className="btn-transfer-request"
+                                onClick={() => handleRequestTransfer(bed)}
+                              >
+                                Ward Transfer
+                              </button>
+                            )
                           )}
                         </>
                       ) : (
@@ -762,12 +931,22 @@ function WardStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socke
                           </div>
 
                           {bed.status === 'occupied' && bed.patientId && (
-                            <button
-                              className="btn-transfer-request"
-                              onClick={() => handleRequestTransfer(bed)}
-                            >
-                              Request Ward Transfer
-                            </button>
+                            hasPendingTransfer(bed._id, bed.patientId._id) ? (
+                              <button
+                                className="btn-transfer-pending"
+                                disabled
+                                title="Transfer request pending approval"
+                              >
+                                Transfer Pending ⏳
+                              </button>
+                            ) : (
+                              <button
+                                className="btn-transfer-request"
+                                onClick={() => handleRequestTransfer(bed)}
+                              >
+                                Request Ward Transfer
+                              </button>
+                            )
                           )}
                         </>
                       )}
@@ -877,6 +1056,20 @@ function WardStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socke
               </div>
 
               <form onSubmit={submitTransferRequest} className="transfer-form">
+                {validationError && (
+                  <div className="validation-error" style={{ 
+                    padding: '12px', 
+                    marginBottom: '16px', 
+                    backgroundColor: '#fee2e2', 
+                    border: '1px solid #ef4444', 
+                    borderRadius: '6px', 
+                    color: '#dc2626',
+                    fontSize: '14px'
+                  }}>
+                    ⚠️ {validationError}
+                  </div>
+                )}
+
                 <div className="bed-details">
                   <h4>Destination Ward</h4>
                   <div className="form-group">
@@ -887,9 +1080,11 @@ function WardStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socke
                       className="form-select"
                     >
                       <option value="">Select ward...</option>
-                      {availableWards.map(ward => (
-                        <option key={ward} value={ward}>{ward}</option>
-                      ))}
+                      {availableWards
+                        .filter(ward => ward !== transferDetails.currentWard)
+                        .map(ward => (
+                          <option key={ward} value={ward}>{ward}</option>
+                        ))}
                     </select>
                     <div className="transfer-note">
                       <small>⚠️ Note: Patients CANNOT be transferred TO Emergency ward</small>
@@ -923,6 +1118,141 @@ function WardStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socke
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Notification Toast */}
+      {notification.show && (
+        <div className={`notification-toast ${notification.type}`} style={{
+          position: 'fixed',
+          top: '20px',
+          right: '20px',
+          padding: '16px 24px',
+          backgroundColor: notification.type === 'success' ? '#10b981' : '#ef4444',
+          color: 'white',
+          borderRadius: '8px',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+          zIndex: 10000,
+          maxWidth: '400px',
+          animation: 'slideIn 0.3s ease-out'
+        }}>
+          {notification.message}
+        </div>
+      )}
+
+      {/* Confirmation Modal */}
+      {showConfirmModal && (
+        <div className="modal-overlay" onClick={() => setShowConfirmModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '450px' }}>
+            <div className="modal-header">
+              <h2>{confirmModalData.title}</h2>
+              <button className="modal-close" onClick={() => setShowConfirmModal(false)}>×</button>
+            </div>
+            <div className="modal-body">
+              <p>{confirmModalData.message}</p>
+            </div>
+            <div className="modal-actions">
+              <button
+                className="btn-secondary"
+                onClick={() => setShowConfirmModal(false)}
+              >
+                Cancel
+              </button>
+              <button
+                className="btn-primary"
+                onClick={confirmModalData.onConfirm}
+              >
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Transfer Status Modal */}
+      {showTransferStatusModal && transferStatusData && (
+        <div className="modal-overlay" onClick={() => setShowTransferStatusModal(false)}>
+          <div className="modal-content transfer-status-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '550px' }}>
+            <div className="modal-header">
+              <div className={`status-icon ${transferStatusData.type === 'approved' ? 'approved' : 'denied'}`} style={{
+                display: 'inline-block',
+                width: '48px',
+                height: '48px',
+                borderRadius: '50%',
+                backgroundColor: transferStatusData.type === 'approved' ? '#10b981' : '#ef4444',
+                color: 'white',
+                fontSize: '28px',
+                lineHeight: '48px',
+                textAlign: 'center',
+                marginBottom: '12px'
+              }}>
+                {transferStatusData.type === 'approved' ? '✓' : '✕'}
+              </div>
+              <h2>{transferStatusData.type === 'approved' ? 'Transfer Approved' : 'Transfer Denied'}</h2>
+              <button className="modal-close" onClick={() => setShowTransferStatusModal(false)}>×</button>
+            </div>
+
+            <div className="modal-body">
+              {transferStatusData.type === 'approved' ? (
+                <>
+                  <p style={{ fontSize: '16px', marginBottom: '20px', color: '#10b981', fontWeight: '500' }}>
+                    ✓ Your ward transfer request has been approved and completed!
+                  </p>
+                  <div className="transfer-details" style={{ backgroundColor: 'var(--card-bg)', padding: '16px', borderRadius: '8px' }}>
+                    <div style={{ marginBottom: '12px' }}>
+                      <strong>Patient:</strong> {transferStatusData.transfer.patientId?.name || 'Unknown'}
+                    </div>
+                    <div style={{ marginBottom: '12px' }}>
+                      <strong>From:</strong> {transferStatusData.oldBed?.bedNumber} ({transferStatusData.transfer.currentWard})
+                      <span style={{ marginLeft: '8px', padding: '2px 8px', backgroundColor: '#fef3c7', color: '#92400e', borderRadius: '4px', fontSize: '12px', fontWeight: '500' }}>
+                        Now Cleaning
+                      </span>
+                    </div>
+                    <div style={{ marginBottom: '12px' }}>
+                      <strong>To:</strong> {transferStatusData.newBed?.bedNumber} ({transferStatusData.transfer.targetWard})
+                      <span style={{ marginLeft: '8px', padding: '2px 8px', backgroundColor: '#dbeafe', color: '#1e40af', borderRadius: '4px', fontSize: '12px', fontWeight: '500' }}>
+                        Now Occupied
+                      </span>
+                    </div>
+                    <div style={{ marginTop: '16px', padding: '12px', backgroundColor: '#d1fae5', borderRadius: '6px', color: '#065f46' }}>
+                      <strong>✓ Transfer Complete:</strong> The patient has been immediately transferred to the new bed. The old bed is now marked for cleaning and will be available once the cleaning staff completes their work.
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <p style={{ fontSize: '16px', marginBottom: '20px', color: '#ef4444', fontWeight: '500' }}>
+                    Your ward transfer request has been denied.
+                  </p>
+                  <div className="transfer-details" style={{ backgroundColor: 'var(--card-bg)', padding: '16px', borderRadius: '8px' }}>
+                    <div style={{ marginBottom: '12px' }}>
+                      <strong>Patient:</strong> {transferStatusData.transfer.patientId?.name || 'Unknown'}
+                    </div>
+                    <div style={{ marginBottom: '12px' }}>
+                      <strong>From Ward:</strong> {transferStatusData.transfer.currentWard}
+                    </div>
+                    <div style={{ marginBottom: '12px' }}>
+                      <strong>To Ward:</strong> {transferStatusData.transfer.targetWard}
+                    </div>
+                    {transferStatusData.reason && (
+                      <div style={{ marginTop: '16px', padding: '12px', backgroundColor: '#fee2e2', borderRadius: '6px', color: '#dc2626' }}>
+                        <strong>Reason:</strong> {transferStatusData.reason}
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className="modal-actions">
+              <button
+                className="btn-primary"
+                onClick={() => setShowTransferStatusModal(false)}
+              >
+                Close
+              </button>
             </div>
           </div>
         </div>

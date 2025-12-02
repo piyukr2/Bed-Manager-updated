@@ -51,9 +51,6 @@ function ICUManagerDashboard({
   const [showTransferDenyModal, setShowTransferDenyModal] = useState(false);
   const [transferDenyReason, setTransferDenyReason] = useState('');
   const [transferToDeny, setTransferToDeny] = useState(null);
-  const [showTransferSuccessModal, setShowTransferSuccessModal] = useState(false);
-  const [transferSuccessMessage, setTransferSuccessMessage] = useState('');
-  const [transferSuccessType, setTransferSuccessType] = useState(''); // 'approved' or 'denied'
 
   // Play notification sound function
   const playNotificationSound = () => {
@@ -281,15 +278,7 @@ function ICUManagerDashboard({
       // Refresh transfer requests from server
       fetchTransferRequests();
       
-      // Extract transfer details from response
-      const { newBed, oldBed, transfer } = response.data;
-      
-      // Show success modal with detailed information
-      setTransferSuccessType('approved');
-      setTransferSuccessMessage(
-        `Ward transfer approved successfully! Patient has been moved from ${oldBed.bedNumber} (${transfer.currentWard}) to ${newBed.bedNumber} (${transfer.targetWard}).`
-      );
-      setShowTransferSuccessModal(true);
+      // No popup shown - silent success
     } catch (error) {
       console.error('Error approving transfer:', error);
       alert(error.response?.data?.error || 'Failed to approve transfer');
@@ -321,10 +310,7 @@ function ICUManagerDashboard({
       setTransferDenyReason('');
       setTransferToDeny(null);
       
-      // Show success modal
-      setTransferSuccessType('denied');
-      setTransferSuccessMessage('Ward transfer request has been denied. The requesting staff will be notified.');
-      setShowTransferSuccessModal(true);
+      // No popup shown - silent success
     } catch (error) {
       console.error('Error denying transfer:', error);
       alert(error.response?.data?.error || 'Failed to deny transfer');
@@ -1014,6 +1000,11 @@ function ICUManagerDashboard({
                             <span className="info-value">{request.reason || 'No specific reason provided'}</span>
                           </div>
                         </div>
+                        <div style={{ marginTop: '12px', padding: '10px', backgroundColor: '#e0f2fe', borderLeft: '3px solid #3b82f6', borderRadius: '4px' }}>
+                          <small style={{ color: '#0369a1', display: 'block', lineHeight: '1.5' }}>
+                            ℹ️ <strong>Note:</strong> Approving this transfer will immediately move the patient to an available bed in {request.targetWard} ward. The old bed will be automatically marked for cleaning.
+                          </small>
+                        </div>
                       </div>
                     </div>
 
@@ -1374,34 +1365,6 @@ function ICUManagerDashboard({
                 disabled={!transferDenyReason.trim()}
               >
                 Confirm Denial
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Ward Transfer Success/Completion Modal */}
-      {showTransferSuccessModal && (
-        <div className="modal-overlay" onClick={() => setShowTransferSuccessModal(false)}>
-          <div className="modal-content success-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <div className={`success-icon ${transferSuccessType === 'approved' ? 'approved' : 'denied'}`}>
-                {transferSuccessType === 'approved' ? '✓' : '✕'}
-              </div>
-              <h2>{transferSuccessType === 'approved' ? 'Transfer Approved' : 'Transfer Denied'}</h2>
-              <button className="modal-close" onClick={() => setShowTransferSuccessModal(false)}>×</button>
-            </div>
-
-            <div className="modal-body">
-              <p className="success-message">{transferSuccessMessage}</p>
-            </div>
-
-            <div className="modal-actions">
-              <button
-                className="btn-primary"
-                onClick={() => setShowTransferSuccessModal(false)}
-              >
-                Close
               </button>
             </div>
           </div>
