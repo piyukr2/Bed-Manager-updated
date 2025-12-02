@@ -274,7 +274,7 @@ function ICUManagerDashboard({
   // Ward Transfer Request Functions
   const handleApproveTransfer = async (transferId) => {
     try {
-      const response = await axios.post(`${API_URL}/ward-transfer-requests/${transferId}/approve`, {
+      await axios.post(`${API_URL}/ward-transfer-requests/${transferId}/approve`, {
         reviewedBy: currentUser._id
       });
       

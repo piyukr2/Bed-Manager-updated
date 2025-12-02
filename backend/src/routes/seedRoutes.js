@@ -7,7 +7,7 @@ const express = require('express');
 const router = express.Router();
 
 // Import models - these will be passed via middleware
-let Bed, Patient, OccupancyHistory, Alert, CleaningJob;
+let Bed, Patient, OccupancyHistory, Alert;
 
 // Middleware to inject models
 const initializeModels = (models) => {
@@ -15,7 +15,6 @@ const initializeModels = (models) => {
   Patient = models.Patient;
   OccupancyHistory = models.OccupancyHistory;
   Alert = models.Alert;
-  CleaningJob = models.CleaningJob;
 };
 
 /**
@@ -34,8 +33,7 @@ router.post('/import', async (req, res) => {
       beds: { imported: 0, skipped: 0, errors: 0 },
       patients: { imported: 0, skipped: 0, errors: 0 },
       occupancyHistory: { imported: 0, skipped: 0, errors: 0 },
-      alerts: { imported: 0, skipped: 0, errors: 0 },
-      cleaningJobs: { imported: 0, skipped: 0, errors: 0 }
+      alerts: { imported: 0, skipped: 0, errors: 0 }
     };
 
     // 1. Import Beds
@@ -210,55 +208,6 @@ router.post('/import', async (req, res) => {
       }
     }
 
-    // 5. Import Cleaning Jobs (only recent ones)
-    if (seedData.cleaningJobs && Array.isArray(seedData.cleaningJobs)) {
-      const recentJobs = seedData.cleaningJobs.filter(job => {
-        const createdAt = new Date(job.createdAt);
-        const daysSinceCreation = (Date.now() - createdAt.getTime()) / (1000 * 60 * 60 * 24);
-        return daysSinceCreation <= 7; // Only import jobs from last 7 days
-      });
-
-      for (const jobData of recentJobs) {
-        try {
-          const bedId = bedLookup[jobData.bedNumber];
-          if (!bedId) {
-            results.cleaningJobs.skipped++;
-            continue;
-          }
-
-          // Check for duplicate
-          const existingJob = await CleaningJob.findOne({
-            bedNumber: jobData.bedNumber,
-            createdAt: new Date(jobData.createdAt)
-          });
-
-          if (existingJob) {
-            results.cleaningJobs.skipped++;
-          } else {
-            const job = new CleaningJob({
-              bedId: bedId,
-              bedNumber: jobData.bedNumber,
-              ward: jobData.ward,
-              floor: jobData.floor,
-              section: jobData.section,
-              roomNumber: jobData.roomNumber,
-              status: jobData.status,
-              assignedTo: staffLookup[jobData.assignedToStaffId] || null,
-              assignedToName: jobData.assignedToName,
-              createdAt: new Date(jobData.createdAt),
-              startedAt: jobData.startedAt ? new Date(jobData.startedAt) : null,
-              completedAt: jobData.completedAt ? new Date(jobData.completedAt) : null
-            });
-            await job.save();
-            results.cleaningJobs.imported++;
-          }
-        } catch (error) {
-          console.error(`Error importing cleaning job:`, error.message);
-          results.cleaningJobs.errors++;
-        }
-      }
-    }
-
     // Calculate totals
     const totalImported = Object.values(results).reduce((sum, r) => sum + r.imported, 0);
     const totalSkipped = Object.values(results).reduce((sum, r) => sum + r.skipped, 0);
@@ -287,13 +236,11 @@ router.post('/import', async (req, res) => {
  */
 router.get('/status', async (req, res) => {
   try {
-    const [bedCount, patientCount, historyCount, alertCount, jobCount, staffCount] = await Promise.all([
+    const [bedCount, patientCount, historyCount, alertCount] = await Promise.all([
       Bed.countDocuments(),
       Patient.countDocuments(),
       OccupancyHistory.countDocuments(),
-      Alert.countDocuments(),
-      CleaningJob.countDocuments(),
-      CleaningStaff.countDocuments()
+      Alert.countDocuments()
     ]);
 
     res.json({
@@ -301,9 +248,7 @@ router.get('/status', async (req, res) => {
         beds: bedCount,
         patients: patientCount,
         occupancyHistory: historyCount,
-        alerts: alertCount,
-        cleaningJobs: jobCount,
-        cleaningStaff: staffCount
+        alerts: alertCount
       }
     });
   } catch (error) {
@@ -377,12 +322,6 @@ router.post('/validate', async (req, res) => {
     }
     if (seedData.alerts) {
       validation.summary.alerts = seedData.alerts.length;
-    }
-    if (seedData.cleaningJobs) {
-      validation.summary.cleaningJobs = seedData.cleaningJobs.length;
-    }
-    if (seedData.cleaningStaff) {
-      validation.summary.cleaningStaff = seedData.cleaningStaff.length;
     }
 
     res.json(validation);
