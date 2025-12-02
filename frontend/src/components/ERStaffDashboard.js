@@ -239,17 +239,16 @@ function ERStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socket 
     }
   };
 
-  const handleCreateRequest = async (requestData) => {
+  const handleCreateRequest = async (e, newRequest, reserveBed, selectedBedId) => {
     setLoading(true);
 
     try {
-      const { selectedBedId, ...requestPayload } = requestData;
-      // Create bed request
-      const response = await axios.post(`${API_URL}/bed-requests`, requestPayload);
+      // Create bed request with the newRequest data
+      const response = await axios.post(`${API_URL}/bed-requests`, newRequest);
       const createdRequest = response.data.request;
 
       // If user wants to reserve a bed immediately, approve the request
-      if (selectedBedId) {
+      if (reserveBed && selectedBedId) {
         await axios.post(`${API_URL}/bed-requests/${createdRequest._id}/approve`, {
           bedId: selectedBedId
         });
@@ -259,10 +258,6 @@ function ERStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socket 
       setShowCreateModal(false);
       fetchRequests();
       fetchStats();
-
-      if (selectedBedId) {
-        alert('✓ Bed request created and bed reserved successfully!');
-      }
     } catch (error) {
       console.error('Error creating request:', error);
       alert(error.response?.data?.error || 'Failed to create bed request');
