@@ -1,12 +1,11 @@
 import React, { useState } from 'react';
 
-const EQUIPMENT_TYPES = [
-  'Standard',
-  'Ventilator',
-  'ICU Monitor',
-  'Cardiac Monitor',
-  'Dialysis'
-];
+const EQUIPMENT_TYPES_BY_WARD = {
+  'ICU': ['ICU Monitor', 'Ventilator'],
+  'General Ward': ['Standard'],
+  'Cardiology': ['Cardiac Monitor', 'VAD'],
+  'Emergency': ['Standard', 'Ventilator']
+};
 
 function EmergencyAdmission({ 
   isOpen, 
@@ -26,10 +25,10 @@ function EmergencyAdmission({
       gender: 'Male',
       contactNumber: '',
       reasonForAdmission: '',
-      requiredEquipment: 'Standard',
+      requiredEquipment: '',
       estimatedStay: 24
     },
-    preferredWard: 'ICU',
+    preferredWard: '',
     eta: ''
   });
 
@@ -64,10 +63,10 @@ function EmergencyAdmission({
         gender: 'Male',
         contactNumber: '',
         reasonForAdmission: '',
-        requiredEquipment: 'Standard',
+        requiredEquipment: '',
         estimatedStay: 24
       },
-      preferredWard: 'ICU',
+      preferredWard: '',
       eta: ''
     });
     setReserveBed(false);
@@ -83,10 +82,10 @@ function EmergencyAdmission({
         gender: 'Male',
         contactNumber: '',
         reasonForAdmission: '',
-        requiredEquipment: 'Standard',
+        requiredEquipment: '',
         estimatedStay: 24
       },
-      preferredWard: 'ICU',
+      preferredWard: '',
       eta: ''
     });
     setReserveBed(false);
@@ -168,13 +167,46 @@ function EmergencyAdmission({
 
             <div className="form-row">
               <div className="form-group">
+                <label>Preferred Ward *</label>
+                <select
+                  required
+                  value={newRequest.preferredWard}
+                  onChange={(e) => {
+                    const ward = e.target.value;
+                    const defaultEquipment = ward ? EQUIPMENT_TYPES_BY_WARD[ward]?.[0] || '' : '';
+                    setNewRequest({ 
+                      ...newRequest, 
+                      preferredWard: ward,
+                      patientDetails: {
+                        ...newRequest.patientDetails,
+                        requiredEquipment: defaultEquipment // Set default equipment for selected ward
+                      }
+                    });
+                    if (reserveBed && onFetchBeds) {
+                      onFetchBeds(ward);
+                    }
+                  }}
+                >
+                  <option value="">Select Ward</option>
+                  <option value="ICU">ICU</option>
+                  <option value="Emergency">Emergency</option>
+                  <option value="Cardiology">Cardiology</option>
+                  <option value="General Ward">General Ward</option>
+                </select>
+              </div>
+
+              <div className="form-group">
                 <label>Required Equipment *</label>
                 <select
                   required
                   value={newRequest.patientDetails.requiredEquipment}
                   onChange={(e) => handleChange('requiredEquipment', e.target.value)}
+                  disabled={!newRequest.preferredWard}
                 >
-                  {EQUIPMENT_TYPES.map(equipment => (
+                  {!newRequest.preferredWard && (
+                    <option value="">Select Ward First</option>
+                  )}
+                  {newRequest.preferredWard && EQUIPMENT_TYPES_BY_WARD[newRequest.preferredWard]?.map(equipment => (
                     <option key={equipment} value={equipment}>
                       {equipment}
                     </option>
@@ -183,7 +215,7 @@ function EmergencyAdmission({
               </div>
             </div>
 
-            <div className="form-group">
+            <div className="form-group" style={{ marginBottom: '24px' }}>
               <label>Reason for Admission *</label>
               <textarea
                 required
@@ -204,26 +236,6 @@ function EmergencyAdmission({
                   onChange={(e) => handleChange('estimatedStay', parseInt(e.target.value))}
                   placeholder="24"
                 />
-              </div>
-
-              <div className="form-group">
-                <label>Preferred Ward</label>
-                <select
-                  value={newRequest.preferredWard}
-                  onChange={(e) => {
-                    const ward = e.target.value;
-                    setNewRequest({ ...newRequest, preferredWard: ward });
-                    if (reserveBed && onFetchBeds) {
-                      onFetchBeds(ward);
-                    }
-                  }}
-                >
-                  <option value="">Any Available</option>
-                  <option value="ICU">ICU</option>
-                  <option value="Emergency">Emergency</option>
-                  <option value="Cardiology">Cardiology</option>
-                  <option value="General Ward">General Ward</option>
-                </select>
               </div>
             </div>
 

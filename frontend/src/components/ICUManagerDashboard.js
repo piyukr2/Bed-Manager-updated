@@ -233,6 +233,9 @@ function ICUManagerDashboard({
       setShowRequestModal(false);
       setSelectedRequest(null);
       fetchBedRequests();
+      
+      // The backend emits 'bed-updated' socket event which automatically updates the UI
+      // No manual refresh needed - socket.io handles real-time updates
     } catch (error) {
       console.error('Error approving request:', error);
       alert(error.response?.data?.error || 'Failed to approve request');
@@ -439,15 +442,8 @@ function ICUManagerDashboard({
         }
       };
       
-      // Create bed request payload
-      const requestPayload = {
-        patientDetails: newRequest.patientDetails,
-        preferredWard: newRequest.preferredWard,
-        eta: newRequest.eta
-      };
-      
-      // Create bed request
-      const response = await axios.post(`${API_URL}/bed-requests`, requestPayload, config);
+      // Create bed request directly with newRequest data
+      const response = await axios.post(`${API_URL}/bed-requests`, newRequest, config);
       const createdRequest = response.data.request;
 
       // If user wants to reserve a bed immediately, approve the request
@@ -460,12 +456,6 @@ function ICUManagerDashboard({
       setAvailableBeds([]);
       setShowEmergencyModal(false);
       fetchBedRequests();
-
-      // if (reserveBed && selectedBedId) {
-      //   alert('✓ Emergency admission created and bed reserved successfully!');
-      // } else {
-      //   alert('✓ Emergency admission request created successfully!');
-      // }
     } catch (error) {
       console.error('Error creating emergency admission:', error);
       const errorMessage = error.response?.data?.error || error.response?.data?.message || 'Failed to create emergency admission';
@@ -631,10 +621,6 @@ function ICUManagerDashboard({
                           <span className="legend-dot" style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)' }}></span>
                           <span>Cleaning</span>
                         </div>
-                        <div className="legend-item">
-                          <span className="legend-dot available"></span>
-                          <span>Available</span>
-                        </div>
                         <div className="legend-item capacity-total">
                           <span className="capacity-icon">🏥</span>
                           <span>{stats.totalBeds} Total Beds</span>
@@ -719,13 +705,6 @@ function ICUManagerDashboard({
                                       </span>
                                       <span className="tooltip-value">{data.occupied} beds</span>
                                     </div>
-                                    <div className="tooltip-row">
-                                      <span className="tooltip-label">
-                                        <span className="tooltip-dot available"></span>
-                                        Available:
-                                      </span>
-                                      <span className="tooltip-value">{data.available} beds</span>
-                                    </div>
                                     {data.cleaning > 0 && (
                                       <div className="tooltip-row">
                                         <span className="tooltip-label">
@@ -784,18 +763,9 @@ function ICUManagerDashboard({
                           stackId="a" 
                           fill="url(#cleaningGradient)" 
                           name="Cleaning"
-                          radius={[0, 0, 0, 0]}
-                          animationDuration={800}
-                          animationBegin={150}
-                        />
-                        <Bar 
-                          dataKey="available" 
-                          stackId="a" 
-                          fill="url(#availableGradient)" 
-                          name="Available"
                           radius={[8, 8, 0, 0]}
                           animationDuration={800}
-                          animationBegin={200}
+                          animationBegin={150}
                         />
                       </BarChart>
                     </ResponsiveContainer>

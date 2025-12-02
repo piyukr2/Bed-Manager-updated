@@ -95,10 +95,9 @@ function WardStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socke
       setBeds(bedsRes.data);
       setStats(statsRes.data);
 
-      // Filter reserved beds that haven't been acknowledged yet
+      // Filter reserved beds for incoming reservations
       const reserved = bedsRes.data.filter(bed =>
-        bed.status === 'reserved' &&
-        !bed.notes?.includes('Bed prepared and ready for patient admission')
+        bed.status === 'reserved'
       );
       setReservedBeds(reserved);
     } catch (error) {
@@ -381,26 +380,18 @@ function WardStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socke
     setNewDischargeDate('');
   };
 
-  const acknowledgeReservation = async (bedId) => {
-    setConfirmModalData({
-      title: 'Acknowledge Bed Ready',
-      message: 'Acknowledge that this bed is ready for the incoming patient?',
-      onConfirm: async () => {
-        try {
-          await axios.put(`${API_URL}/beds/${bedId}`, {
-            notes: 'Bed prepared and ready for patient admission'
-          });
+  const occupyReservedBed = async (bedId) => {
+    try {
+      await axios.put(`${API_URL}/beds/${bedId}`, {
+        status: 'occupied'
+      });
 
-          showNotification('success', '✓ Bed acknowledged! It has been marked as ready for patient admission.');
-          setShowConfirmModal(false);
-          fetchData();
-        } catch (error) {
-          console.error('Error acknowledging reservation:', error);
-          showNotification('error', error.response?.data?.error || 'Failed to acknowledge reservation');
-        }
-      }
-    });
-    setShowConfirmModal(true);
+      showNotification('success', '✓ Bed occupied! The reserved bed is now marked as occupied.');
+      fetchData();
+    } catch (error) {
+      console.error('Error occupying reserved bed:', error);
+      showNotification('error', error.response?.data?.error || 'Failed to occupy bed');
+    }
   };
 
   const getStatusColor = (status) => {
@@ -705,9 +696,9 @@ function WardStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socke
                       <div className="reservation-actions">
                         <button
                           className="btn-acknowledge"
-                          onClick={() => acknowledgeReservation(bed._id)}
+                          onClick={() => occupyReservedBed(bed._id)}
                         >
-                          ✓ Bed Ready
+                          Occupy Bed
                         </button>
                       </div>
                     </div>
@@ -762,11 +753,6 @@ function WardStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socke
                         <span className={`bed-status-badge status-${bed.status}`}>
                           {bed.status}
                         </span>
-                        {bed.status === 'reserved' && bed.notes?.includes('Bed prepared and ready for patient admission') && (
-                          <span className="bed-acknowledged-badge" title="Bed prepared and acknowledged">
-                            ✓ Ready
-                          </span>
-                        )}
                       </div>
                     </div>
 

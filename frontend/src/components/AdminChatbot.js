@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import './AdminChatbot.css';
 
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+
 const AdminChatbot = () => {
   const [messages, setMessages] = useState([
     {
@@ -52,7 +54,7 @@ const AdminChatbot = () => {
       }));
 
       const token = localStorage.getItem('token');
-      const response = await fetch('http://localhost:5000/api/chatbot/chat', {
+      const response = await fetch(`${API_URL}/chatbot/chat`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

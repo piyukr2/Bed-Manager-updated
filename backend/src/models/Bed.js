@@ -19,7 +19,7 @@ const bedSchema = new mongoose.Schema({
   },
   equipmentType: {
     type: String,
-    enum: ['Standard', 'Ventilator', 'ICU Monitor', 'Cardiac Monitor', 'Dialysis'],
+    enum: ['Standard', 'Ventilator', 'ICU Monitor', 'Cardiac Monitor', 'VAD'],
     default: 'Standard'
   },
   patientId: { 

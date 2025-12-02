@@ -82,6 +82,20 @@ function WardView({ beds, onUpdateBed, canUpdateBeds }) {
     return stats;
   };
 
+  // Determine which status transitions are valid for a given bed
+  const isStatusTransitionValid = (currentStatus, targetStatus) => {
+    if (currentStatus === targetStatus) return false; // Can't transition to same status
+
+    const validTransitions = {
+      'available': ['reserved', 'occupied'], // Available can be reserved or directly occupied
+      'reserved': ['occupied', 'available'], // Reserved can be occupied or cancelled (back to available)
+      'occupied': ['cleaning'], // Occupied can only go to cleaning (after discharge)
+      'cleaning': ['available'], // Cleaning can only go back to available
+    };
+
+    return validTransitions[currentStatus]?.includes(targetStatus) || false;
+  };
+
   return (
     <div className="ward-view-container">
       <div className="ward-sections">
@@ -283,17 +297,29 @@ function WardView({ beds, onUpdateBed, canUpdateBeds }) {
                 <div className="status-buttons">
                   <h4>Update Bed Status</h4>
                   <div className="status-grid">
-                    {Object.keys(STATUS_LABELS).map((status) => (
-                      <button
-                        key={status}
-                        className={`status-btn ${status}`}
-                        onClick={() => handleStatusChange(status)}
-                        disabled={selectedBed.status === status}
-                      >
-                        <span className={`status-dot status-${status}`} />
-                        {STATUS_LABELS[status]}
-                      </button>
-                    ))}
+                    {Object.keys(STATUS_LABELS).map((status) => {
+                      const isValid = isStatusTransitionValid(selectedBed.status, status);
+                      const isCurrent = selectedBed.status === status;
+                      return (
+                        <button
+                          key={status}
+                          className={`status-btn ${status} ${!isValid && !isCurrent ? 'disabled' : ''}`}
+                          onClick={() => handleStatusChange(status)}
+                          disabled={!isValid}
+                          title={
+                            isCurrent 
+                              ? 'Current status' 
+                              : !isValid 
+                                ? 'This transition is not allowed' 
+                                : `Change status to ${STATUS_LABELS[status]}`
+                          }
+                        >
+                          <span className={`status-dot status-${status}`} />
+                          {STATUS_LABELS[status]}
+                          {isCurrent && <span className="current-badge">Current</span>}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               )}
