@@ -8372,3 +8372,15 @@ body {
 :root[data-theme='dark'] .sleek-design::-webkit-scrollbar-thumb:hover {
   background: rgba(6, 182, 212, 0.7);
 }
+
+/* Notification Toast Animation */
+@keyframes slideInRight {
+  from {
+    transform: translateX(400px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}

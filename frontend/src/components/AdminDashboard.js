@@ -21,6 +21,7 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [selectedWard, setSelectedWard] = useState('All');
   const [todayHourlySource, setTodayHourlySource] = useState(null);
+  const [scheduledDischarges, setScheduledDischarges] = useState(0);
 
   // Seed data import state
   const [seedFile, setSeedFile] = useState(null);
@@ -31,6 +32,23 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
 
   // Chart options
   const [showMaxOccupancy, setShowMaxOccupancy] = useState(true);
+
+  // Notification state
+  const [notification, setNotification] = useState(null);
+
+  // Auto-hide notification after 5 seconds
+  useEffect(() => {
+    if (notification) {
+      const timer = setTimeout(() => {
+        setNotification(null);
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [notification]);
+
+  const showNotification = (message, type = 'info') => {
+    setNotification({ message, type });
+  };
 
   const hasHourlyData = (record) => Array.isArray(record?.hourlyData) && record.hourlyData.length > 0;
 
@@ -173,16 +191,22 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
     socket.on('patient-admitted', () => {
       fetchStats();
       fetchHistory();
+      fetchScheduledDischarges();
     });
 
     socket.on('patient-discharged', () => {
       fetchStats();
       fetchHistory();
+      fetchScheduledDischarges();
     });
 
     socket.on('patient-transferred', () => {
       fetchStats();
       fetchHistory();
+    });
+
+    socket.on('patient-updated', () => {
+      fetchScheduledDischarges();
     });
 
     socket.on('ward-transfer-updated', () => {
@@ -212,12 +236,19 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
       socket.off('patient-admitted');
       socket.off('patient-discharged');
       socket.off('patient-transferred');
+      socket.off('patient-updated');
       socket.off('ward-transfer-updated');
       socket.off('settings-updated');
       socket.off('beds-synced');
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [socket]);
+
+  // Refresh scheduled discharges when selected ward changes
+  useEffect(() => {
+    fetchScheduledDischarges();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedWard]);
 
   const fetchAllData = async () => {
     // setLoading(true);
@@ -227,7 +258,8 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
         fetchHistory(),
         fetchBedRequests(),
         fetchRequestStats(),
-        fetchSettings()
+        fetchSettings(),
+        fetchScheduledDischarges()
       ]);
     } catch (error) {
       console.error('Error fetching data:', error);
@@ -345,6 +377,17 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
     }
   };
 
+  const fetchScheduledDischarges = async () => {
+    try {
+      const ward = selectedWard !== 'All' ? selectedWard : undefined;
+      const params = ward ? `?ward=${ward}` : '';
+      const response = await axios.get(`${API_URL}/patients/discharges/today${params}`);
+      setScheduledDischarges(response.data.count);
+    } catch (error) {
+      console.error('Error fetching scheduled discharges:', error);
+    }
+  };
+
   const handleUpdateSettings = async () => {
     if (!settings) return;
 
@@ -366,16 +409,16 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
             return `${ward}: ${parts.join(', ')}`;
           });
         if (changes.length > 0) {
-          message += `\n\nBed changes:\n${changes.join('\n')}`;
+          message += ` Bed changes: ${changes.join(', ')}`;
         }
       }
 
-      alert(message);
+      showNotification(message, 'success');
       // Refresh stats after bed changes
       fetchStats();
     } catch (error) {
       console.error('Error updating settings:', error);
-      alert(error.response?.data?.error || 'Failed to update settings');
+      showNotification(error.response?.data?.error || 'Failed to update settings', 'error');
     } finally {
       setSettingsSaving(false);
     }
@@ -388,10 +431,10 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
     try {
       const response = await axios.post(`${API_URL}/settings/reset`);
       setSettings(response.data.settings);
-      alert('Settings reset to defaults!');
+      showNotification('Settings reset to defaults!', 'success');
     } catch (error) {
       console.error('Error resetting settings:', error);
-      alert(error.response?.data?.error || 'Failed to reset settings');
+      showNotification(error.response?.data?.error || 'Failed to reset settings', 'error');
     } finally {
       setSettingsSaving(false);
     }
@@ -465,7 +508,7 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
       await fetchAllData();
       await fetchDbStatus();
 
-      alert('Seed data imported successfully!');
+      showNotification('Seed data imported successfully!', 'success');
     } catch (error) {
       console.error('Seed import error:', error);
       setSeedImportResult({
@@ -1100,7 +1143,7 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
       }
     } catch (error) {
       console.error('Error exporting report:', error);
-      alert('Failed to export report');
+      showNotification('Failed to export report', 'error');
     }
   };
 
@@ -1343,6 +1386,27 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
                               </div>
                             </div>
                           ))}
+                        </div>
+
+                        {/* Scheduled Discharges for Today */}
+                        <div className="scheduled-discharges-section" style={{ marginTop: '20px' }}>
+                          <h3>Scheduled Discharges Today {selectedWard !== 'All' && `- ${selectedWard}`}</h3>
+                          <div className="forecast-card" style={{ maxWidth: '300px' }}>
+                            <h4>Expected Discharges</h4>
+                            <div className="forecast-values">
+                              <div className="forecast-value">
+                                <span className="forecast-label">Total for Today:</span>
+                                <span className={`forecast-number ${scheduledDischarges > 0 ? 'low' : ''}`}>
+                                  {scheduledDischarges}
+                                </span>
+                              </div>
+                            </div>
+                            {scheduledDischarges > 0 && (
+                              <p style={{ fontSize: '12px', color: '#64748b', marginTop: '8px', textAlign: 'center' }}>
+                                {scheduledDischarges === 1 ? '1 patient is' : `${scheduledDischarges} patients are`} scheduled for discharge today
+                              </p>
+                            )}
+                          </div>
                         </div>
 
                         {/* Allocation Suggestions */}
@@ -2334,6 +2398,52 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
         )}
       </div>
       <AdminChatbot />
+
+      {/* Notification Toast */}
+      {notification && (
+        <div 
+          className={`notification-toast notification-${notification.type}`}
+          style={{
+            position: 'fixed',
+            top: '20px',
+            right: '20px',
+            padding: '16px 24px',
+            borderRadius: '8px',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+            zIndex: 10000,
+            maxWidth: '400px',
+            animation: 'slideInRight 0.3s ease-out',
+            backgroundColor: notification.type === 'success' ? '#10b981' : 
+                           notification.type === 'error' ? '#ef4444' : 
+                           notification.type === 'warning' ? '#f59e0b' : '#3b82f6',
+            color: 'white',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px'
+          }}
+        >
+          <span style={{ fontSize: '20px' }}>
+            {notification.type === 'success' ? '✓' : 
+             notification.type === 'error' ? '✕' : 
+             notification.type === 'warning' ? '⚠' : 'ℹ'}
+          </span>
+          <span style={{ flex: 1 }}>{notification.message}</span>
+          <button
+            onClick={() => setNotification(null)}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: 'white',
+              cursor: 'pointer',
+              fontSize: '20px',
+              padding: '0',
+              lineHeight: '1'
+            }}
+          >
+            ×
+          </button>
+        </div>
+      )}
     </div>
   );
 }

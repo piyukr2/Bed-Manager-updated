@@ -40,6 +40,8 @@ async function syncWardBeds(ward, targetCapacity, io) {
   const currentCount = currentBeds.length;
   let added = 0, removed = 0;
 
+  console.log(`[syncWardBeds] ${ward}: current=${currentCount}, target=${targetCapacity}`);
+
   if (targetCapacity > currentCount) {
     // Add beds
     const bedsToAdd = targetCapacity - currentCount;
@@ -70,12 +72,13 @@ async function syncWardBeds(ward, targetCapacity, io) {
   } else if (targetCapacity < currentCount) {
     // Remove beds (only unoccupied ones, from the end)
     const bedsToRemove = currentCount - targetCapacity;
-    const availableBeds = currentBeds
-      .filter(b => b.status === 'available')
+    // Include available, cleaning, and reserved beds for removal (but not occupied)
+    const removableBeds = currentBeds
+      .filter(b => b.status === 'available' || b.status === 'cleaning' || b.status === 'reserved')
       .reverse()
       .slice(0, bedsToRemove);
 
-    for (const bed of availableBeds) {
+    for (const bed of removableBeds) {
       await Bed.findByIdAndDelete(bed._id);
       removed++;
     }
@@ -85,6 +88,8 @@ async function syncWardBeds(ward, targetCapacity, io) {
       console.log(`Warning: Could only remove ${removed}/${bedsToRemove} beds from ${ward} (others are occupied)`);
     }
   }
+
+  console.log(`[syncWardBeds] ${ward}: added=${added}, removed=${removed}, final count should be=${currentCount + added - removed}`);
 
   // Emit bed updates
   if (added > 0 || removed > 0) {
@@ -96,6 +101,11 @@ async function syncWardBeds(ward, targetCapacity, io) {
 
 // Update system settings (admin only)
 router.put('/', authorize('admin'), async (req, res) => {
+  console.log('====================================');
+  console.log('[Settings API] PUT /api/settings called');
+  console.log('[Settings API] Request body:', JSON.stringify(req.body, null, 2));
+  console.log('====================================');
+  
   try {
     const {
       thresholds,
@@ -139,17 +149,25 @@ router.put('/', authorize('admin'), async (req, res) => {
 
     // Update ward capacity and sync beds
     if (wardCapacity) {
+      console.log('[Settings Update] Ward capacities received:', wardCapacity);
       for (const [ward, capacity] of Object.entries(wardCapacity)) {
         if (capacity !== undefined && capacity > 0) {
           const oldCapacity = settings.wardCapacity[ward] || 15;
+          console.log(`[Settings Update] ${ward}: ${oldCapacity} -> ${capacity}`);
           settings.wardCapacity[ward] = capacity;
 
           // Sync actual beds if capacity changed
           if (capacity !== oldCapacity) {
             bedSyncResults[ward] = await syncWardBeds(ward, capacity, req.io);
+          } else {
+            console.log(`[Settings Update] ${ward}: No change in capacity, skipping sync`);
           }
         }
       }
+      
+      // Log final summary
+      const totalTarget = Object.values(wardCapacity).reduce((sum, val) => sum + (val || 0), 0);
+      console.log(`[Settings Update] Total target capacity: ${totalTarget}`);
     }
 
     // Track who updated
