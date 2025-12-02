@@ -302,6 +302,7 @@ const bedRoutes = require('./routes/beds');
 const patientRoutes = require('./routes/patients');
 const alertRoutes = require('./routes/alerts');
 const bedRequestRoutes = require('./routes/bedRequests');
+const chatbotRoutes = require('./routes/chatbot');
 
 // Socket.IO Connection
 const connectedClients = new Map();
@@ -352,6 +353,7 @@ app.use('/api/beds', authenticateToken, bedRoutes);
 app.use('/api/patients', authenticateToken, patientRoutes);
 app.use('/api/alerts', authenticateToken, alertRoutes);
 app.use('/api/bed-requests', authenticateToken, bedRequestRoutes);
+app.use('/api/chatbot', authenticateToken, chatbotRoutes);
 
 // System settings routes
 const systemSettingsRoutes = require('./routes/systemSettings');
