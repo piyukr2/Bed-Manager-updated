@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import Dashboard from './Dashboard';
 import ResizableCard from './ResizableCard';
+import AdminChatbot from './AdminChatbot';
 // import OccupancyChart from './OccupancyChart';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, LineChart, Line, XAxis, YAxis, CartesianGrid, ReferenceLine } from 'recharts';
 
@@ -2305,6 +2306,7 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
           </div>
         )}
       </div>
+      <AdminChatbot />
     </div>
   );
 }
