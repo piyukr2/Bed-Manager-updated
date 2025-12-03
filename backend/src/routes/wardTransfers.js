@@ -133,17 +133,30 @@ router.post('/:id/approve', async (req, res) => {
       return res.status(400).json({ error: 'Transfer request has already been processed' });
     }
 
-    // Find an available bed in the target ward with matching equipment
+    // Helper function to get default equipment types for each ward
+    const getWardDefaultEquipment = (ward) => {
+      const equipmentMap = {
+        'ICU': ['ICU Monitor', 'Ventilator'],
+        'General Ward': ['Standard'],
+        'Cardiology': ['Cardiac Monitor', 'VAD'],
+        'Emergency': ['Standard', 'Ventilator']
+      };
+      return equipmentMap[ward] || [];
+    };
+
+    // Find an available bed in the target ward with default equipment for that ward
     const currentBed = transfer.bedId;
+    const targetWardEquipment = getWardDefaultEquipment(transfer.targetWard);
+    
     const targetBed = await Bed.findOne({
       ward: transfer.targetWard,
       status: 'available',
-      equipmentType: currentBed.equipmentType
+      equipmentType: { $in: targetWardEquipment }
     }).sort({ 'location.floor': 1, 'location.section': 1 });
 
     if (!targetBed) {
       return res.status(400).json({ 
-        error: `No available beds with ${currentBed.equipmentType} equipment in ${transfer.targetWard} ward` 
+        error: `No available beds with appropriate equipment (${targetWardEquipment.join(' or ')}) in ${transfer.targetWard} ward` 
       });
     }
 

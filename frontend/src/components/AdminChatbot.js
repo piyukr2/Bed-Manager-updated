@@ -73,7 +73,7 @@ const AdminChatbot = () => {
           type: 'assistant',
           content: data.message,
           dataPoints: data.dataPoints,
-          metadata: data.metadata,
+          metadata: data.metadata, // Enhanced metadata with execution log, calculations, etc.
           timestamp: new Date(data.timestamp)
         };
         setMessages(prev => [...prev, assistantMessage]);
@@ -81,6 +81,7 @@ const AdminChatbot = () => {
         const errorMessage = {
           type: 'error',
           content: data.error || 'Failed to get response. Please try again.',
+          suggestion: data.suggestion, // Enhancement #8: Show suggestions
           timestamp: new Date()
         };
         setMessages(prev => [...prev, errorMessage]);
@@ -163,6 +164,117 @@ const AdminChatbot = () => {
               <div key={index} className={`message ${message.type}`}>
                 <div className="message-content">
                   <div className="message-text">{message.content}</div>
+                  
+                  {/* Enhancement #8: Show suggestion for errors */}
+                  {message.type === 'error' && message.suggestion && (
+                    <div className="error-suggestion" style={{
+                      marginTop: '0.5rem',
+                      padding: '0.5rem',
+                      background: 'rgba(59, 130, 246, 0.1)',
+                      border: '1px solid rgba(59, 130, 246, 0.3)',
+                      borderRadius: '4px',
+                      fontSize: '0.85rem'
+                    }}>
+                      <strong>💡 Suggestion:</strong> {message.suggestion}
+                    </div>
+                  )}
+                  
+                  {/* Enhancement #3 & #9: Show metadata with transparency */}
+                  {message.metadata && (
+                    <div className="message-metadata" style={{
+                      marginTop: '0.75rem',
+                      padding: '0.75rem',
+                      background: 'rgba(148, 163, 184, 0.05)',
+                      borderRadius: '6px',
+                      fontSize: '0.8rem'
+                    }}>
+                      <div style={{ 
+                        display: 'flex', 
+                        flexWrap: 'wrap', 
+                        gap: '0.5rem',
+                        marginBottom: '0.5rem'
+                      }}>
+                        {message.metadata.dataFreshness && (
+                          <span style={{
+                            padding: '0.2rem 0.5rem',
+                            background: 'rgba(16, 185, 129, 0.2)',
+                            borderRadius: '4px',
+                            fontSize: '0.75rem',
+                            color: 'var(--text-primary)'
+                          }}>
+                            🔄 {message.metadata.dataFreshness}
+                          </span>
+                        )}
+                        {message.metadata.cached && (
+                          <span style={{
+                            padding: '0.2rem 0.5rem',
+                            background: 'rgba(245, 158, 11, 0.2)',
+                            borderRadius: '4px',
+                            fontSize: '0.75rem',
+                            color: 'var(--text-primary)'
+                          }}>
+                            ⚡ Cached ({message.metadata.cacheAge}s old)
+                          </span>
+                        )}
+                        {message.metadata.functionCallsUsed > 0 && (
+                          <span style={{
+                            padding: '0.2rem 0.5rem',
+                            background: 'rgba(139, 92, 246, 0.2)',
+                            borderRadius: '4px',
+                            fontSize: '0.75rem',
+                            color: 'var(--text-primary)'
+                          }}>
+                            🔧 {message.metadata.functionCallsUsed} function{message.metadata.functionCallsUsed > 1 ? 's' : ''} called
+                          </span>
+                        )}
+                      </div>
+                      
+                      {/* Show execution log for transparency */}
+                      {message.metadata.executionLog && message.metadata.executionLog.length > 0 && (
+                        <details style={{ marginTop: '0.5rem' }}>
+                          <summary style={{ 
+                            cursor: 'pointer', 
+                            fontWeight: 600,
+                            color: 'var(--text-primary)',
+                            fontSize: '0.8rem'
+                          }}>
+                            📊 Query Execution Details
+                          </summary>
+                          <div style={{ marginTop: '0.5rem' }}>
+                            {message.metadata.executionLog.map((log, idx) => (
+                              <div key={idx} style={{
+                                padding: '0.4rem',
+                                marginBottom: '0.3rem',
+                                background: log.success ? 'rgba(16, 185, 129, 0.05)' : 'rgba(239, 68, 68, 0.05)',
+                                borderLeft: `3px solid ${log.success ? '#10b981' : '#ef4444'}`,
+                                borderRadius: '3px'
+                              }}>
+                                <div style={{ fontWeight: 600, fontSize: '0.75rem' }}>
+                                  {log.success ? '✅' : '❌'} {log.function}
+                                </div>
+                                {log.executionTime && (
+                                  <div style={{ fontSize: '0.7rem', color: 'var(--text-quiet)' }}>
+                                    ⏱️ {log.executionTime}
+                                  </div>
+                                )}
+                                {log.warnings && log.warnings.length > 0 && (
+                                  <div style={{ fontSize: '0.7rem', color: '#f59e0b', marginTop: '0.2rem' }}>
+                                    ⚠️ {log.warnings.join(', ')}
+                                  </div>
+                                )}
+                                {log.error && (
+                                  <div style={{ fontSize: '0.7rem', color: '#ef4444', marginTop: '0.2rem' }}>
+                                    ❌ {log.error}
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </details>
+                      )}
+                    </div>
+                  )}
+                  
                   {message.dataPoints && (
                     <div className="data-points">
                       <div className="data-point">

@@ -227,6 +227,7 @@ router.post('/:id/approve', authorize('icu_manager', 'admin'), async (req, res) 
 
     // Reserve the bed
     bed.status = 'reserved';
+    bed.reservedForRequestId = request._id; // Store request reference
     bed.notes = `Reserved for request ${request.requestId}`;
     await bed.save();
 
@@ -358,6 +359,7 @@ router.post('/:id/fulfill', authorize('icu_manager', 'ward_staff', 'admin'), asy
     // Update bed status
     bed.status = 'occupied';
     bed.patientId = patient._id;
+    bed.reservedForRequestId = null; // Clear request reference
     bed.notes = `Admitted from request ${request.requestId}`;
     await bed.save();
 

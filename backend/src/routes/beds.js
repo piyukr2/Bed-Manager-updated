@@ -450,41 +450,98 @@ router.get('/qr/site', async (req, res) => {
 // Recommend bed for emergency
 router.post('/recommend', authorize('admin', 'icu_manager', 'er_staff'), async (req, res) => {
   try {
-    const { ward, equipmentType, urgency } = req.body;
+    const { ward, equipmentType, urgency, limit = 3 } = req.body;
 
     // Trim and validate ward parameter
     const requestedWard = ward ? ward.trim() : null;
+    const maxResults = Math.min(parseInt(limit) || 3, 3); // Max 3 results
 
     // Log the recommendation request for debugging
-    console.log(`🔍 Bed Recommendation Request: Ward='${requestedWard || 'Any'}', Equipment='${equipmentType || 'Any'}', Urgency='${urgency || 'normal'}'`);
+    console.log(`🔍 Bed Recommendation Request: Ward='${requestedWard || 'Any'}', Equipment='${equipmentType || 'Any'}', Urgency='${urgency || 'normal'}', Limit=${maxResults}`);
 
-    let recommendedBed = null;
+    let recommendedBeds = [];
+    let perfectMatches = [];
+    let wardMatches = [];
+    let equipmentMatches = [];
+    let otherAvailable = [];
 
     // If ward is specified (non-empty string), ONLY look for beds in that specific ward
     if (requestedWard && requestedWard !== '' && requestedWard !== 'Any') {
-      // Priority 1: Match both ward AND equipment
+      // Priority 1: Perfect Match - both ward AND equipment
       if (equipmentType) {
-        recommendedBed = await Bed.findOne({
+        // Get all perfect matches first
+        const allPerfectMatches = await Bed.find({
           status: 'available',
           ward: requestedWard,
           equipmentType
         }).sort({ lastUpdated: 1 });
-      }
 
-      // Priority 2: Match ward only (any equipment in that ward)
-      if (!recommendedBed) {
-        recommendedBed = await Bed.findOne({
+        // Smart allocation based on number of perfect matches
+        if (allPerfectMatches.length >= 3) {
+          // If 3+ perfect matches exist: take 2 perfect + 1 different equipment
+          perfectMatches = allPerfectMatches.slice(0, 2);
+          
+          // Get 1 bed with different equipment
+          wardMatches = await Bed.find({
+            status: 'available',
+            ward: requestedWard,
+            equipmentType: { $ne: equipmentType }
+          }).sort({ lastUpdated: 1 }).limit(1);
+          
+          console.log(`✅ Found ${allPerfectMatches.length} perfect matches. Taking 2 perfect + 1 different equipment`);
+        } else if (allPerfectMatches.length >= 2) {
+          // If 2 perfect matches exist: take 2 perfect + 1 any other
+          perfectMatches = allPerfectMatches.slice(0, 2);
+          
+          // Get 1 more bed with different equipment
+          wardMatches = await Bed.find({
+            status: 'available',
+            ward: requestedWard,
+            equipmentType: { $ne: equipmentType }
+          }).sort({ lastUpdated: 1 }).limit(1);
+          
+          console.log(`✅ Found 2 perfect matches. Taking 2 perfect + 1 different equipment`);
+        } else if (allPerfectMatches.length === 1) {
+          // If 1 perfect match: take 1 perfect + 2 different equipment
+          perfectMatches = allPerfectMatches;
+          
+          // Get 2 more beds with different equipment
+          wardMatches = await Bed.find({
+            status: 'available',
+            ward: requestedWard,
+            equipmentType: { $ne: equipmentType }
+          }).sort({ lastUpdated: 1 }).limit(2);
+          
+          console.log(`✅ Found 1 perfect match. Taking 1 perfect + 2 different equipment`);
+        } else {
+          // If 0 perfect matches: take up to 3 with different equipment
+          wardMatches = await Bed.find({
+            status: 'available',
+            ward: requestedWard
+          }).sort({ lastUpdated: 1 }).limit(3);
+          
+          console.log(`⚠️ No perfect matches. Taking up to 3 beds with any equipment`);
+        }
+      } else {
+        // No equipment specified: just get up to 3 beds from the ward
+        wardMatches = await Bed.find({
           status: 'available',
           ward: requestedWard
-        }).sort({ lastUpdated: 1 });
+        }).sort({ lastUpdated: 1 }).limit(3);
       }
 
+      // Combine results
+      recommendedBeds = [
+        ...perfectMatches.map(bed => ({ bed, matchLevel: 'perfect' })),
+        ...wardMatches.map(bed => ({ bed, matchLevel: 'ward_match' }))
+      ];
+
       // If no available beds in requested ward, show alternatives from THAT ward only
-      if (!recommendedBed) {
+      if (recommendedBeds.length === 0) {
         const cleaningBeds = await Bed.find({
           status: 'cleaning',
           ward: requestedWard
-        }).sort({ lastCleaned: -1 }).limit(5);
+        }).sort({ lastCleaned: -1 }).limit(3);
 
         const reservedBeds = await Bed.find({
           status: 'reserved',
@@ -504,31 +561,62 @@ router.post('/recommend', authorize('admin', 'icu_manager', 'er_staff'), async (
         });
       }
 
-      console.log(`✅ Recommended bed: ${recommendedBed.bedNumber} from ${recommendedBed.ward} ward (requested: ${requestedWard})`);
+      console.log(`✅ Found ${recommendedBeds.length} beds in ${requestedWard} ward (${perfectMatches.length} perfect matches, ${wardMatches.length} ward matches)`);
     } else {
       // No ward specified (null, empty, or "Any") - can search across all wards
       console.log(`🔍 No specific ward requested. Searching across all wards...`);
 
-      // Priority 1: Match equipment
+      // Priority 1: Equipment match (any ward)
       if (equipmentType) {
-        recommendedBed = await Bed.findOne({
+        const allEquipmentMatches = await Bed.find({
           status: 'available',
           equipmentType
         }).sort({ lastUpdated: 1 });
-      }
 
-      // Priority 2: Any available bed
-      if (!recommendedBed) {
-        recommendedBed = await Bed.findOne({
+        if (allEquipmentMatches.length >= 3) {
+          // If 3+ equipment matches: take 2 matching + 1 different
+          equipmentMatches = allEquipmentMatches.slice(0, 2);
+          
+          otherAvailable = await Bed.find({
+            status: 'available',
+            equipmentType: { $ne: equipmentType }
+          }).sort({ lastUpdated: 1 }).limit(1);
+        } else if (allEquipmentMatches.length >= 2) {
+          // If 2 equipment matches: take 2 matching + 1 any other
+          equipmentMatches = allEquipmentMatches.slice(0, 2);
+          
+          otherAvailable = await Bed.find({
+            status: 'available',
+            equipmentType: { $ne: equipmentType }
+          }).sort({ lastUpdated: 1 }).limit(1);
+        } else {
+          // Take what we have + fill with others
+          equipmentMatches = allEquipmentMatches;
+          
+          const remaining = 3 - equipmentMatches.length;
+          otherAvailable = await Bed.find({
+            status: 'available',
+            equipmentType: { $ne: equipmentType }
+          }).sort({ lastUpdated: 1 }).limit(remaining);
+        }
+      } else {
+        // No equipment specified: just get up to 3 beds from any ward
+        otherAvailable = await Bed.find({
           status: 'available'
-        }).sort({ lastUpdated: 1 });
+        }).sort({ lastUpdated: 1 }).limit(3);
       }
 
-      // Show alternatives from any ward
-      if (!recommendedBed) {
+      // Combine results
+      recommendedBeds = [
+        ...equipmentMatches.map(bed => ({ bed, matchLevel: 'equipment_match' })),
+        ...otherAvailable.map(bed => ({ bed, matchLevel: 'any_available' }))
+      ];
+
+      // Show alternatives from any ward if no available beds
+      if (recommendedBeds.length === 0) {
         const cleaningBeds = await Bed.find({ status: 'cleaning' })
           .sort({ lastCleaned: -1 })
-          .limit(5);
+          .limit(3);
 
         const reservedBeds = await Bed.find({ status: 'reserved' })
           .sort({ lastUpdated: 1 })
@@ -547,13 +635,19 @@ router.post('/recommend', authorize('admin', 'icu_manager', 'er_staff'), async (
         });
       }
 
-      console.log(`✅ Recommended bed: ${recommendedBed.bedNumber} from ${recommendedBed.ward} ward (no specific ward requested)`);
+      console.log(`✅ Found ${recommendedBeds.length} beds across all wards (${equipmentMatches.length} equipment matches, ${otherAvailable.length} other available)`);
     }
 
     res.json({
-      bed: recommendedBed,
-      matchLevel: getMatchLevel(recommendedBed, requestedWard, equipmentType),
-      message: 'Bed recommended based on availability and requirements'
+      beds: recommendedBeds,
+      count: recommendedBeds.length,
+      message: `Found ${recommendedBeds.length} available bed option(s)`,
+      summary: {
+        perfectMatches: perfectMatches.length,
+        wardMatches: wardMatches.length,
+        equipmentMatches: equipmentMatches.length,
+        otherAvailable: otherAvailable.length
+      }
     });
   } catch (error) {
     res.status(500).json({ error: error.message });

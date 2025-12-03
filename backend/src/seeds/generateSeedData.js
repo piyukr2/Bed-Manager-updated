@@ -11,7 +11,7 @@ const path = require('path');
 
 // Configuration
 const CONFIG = {
-  DAYS_OF_HISTORY: 31,
+  DAYS_OF_HISTORY: 60, // Changed from 31 to 60 days for better forecasting data
   WARDS: [
     { name: 'Emergency', floor: 0, beds: 15, equipment: ['Standard', 'Ventilator'] },
     { name: 'ICU', floor: 1, beds: 15, equipment: ['ICU Monitor', 'Ventilator'] },
@@ -112,6 +112,7 @@ function generateVitals() {
 function generateBeds() {
   const beds = [];
   let bedIndex = 1;
+  const now = new Date('2025-12-02T23:59:59.999Z');
 
   for (const ward of CONFIG.WARDS) {
     for (let i = 1; i <= ward.beds; i++) {
@@ -126,12 +127,12 @@ function generateBeds() {
           section: section,
           roomNumber: `${ward.floor}${section}${String(((i - 1) % 5) + 1).padStart(2, '0')}`
         },
-        lastCleaned: new Date(),
-        lastUpdated: new Date(),
+        lastCleaned: now,
+        lastUpdated: now,
         notes: '',
         maintenanceSchedule: {
-          nextMaintenance: new Date(Date.now() + randomInt(7, 30) * 24 * 60 * 60 * 1000),
-          lastMaintenance: new Date(Date.now() - randomInt(7, 30) * 24 * 60 * 60 * 1000)
+          nextMaintenance: new Date(now.getTime() + randomInt(7, 30) * 24 * 60 * 60 * 1000),
+          lastMaintenance: new Date(now.getTime() - randomInt(7, 30) * 24 * 60 * 60 * 1000)
         }
       });
       bedIndex++;
@@ -143,7 +144,7 @@ function generateBeds() {
 
 function generatePatients(beds, daysOfHistory) {
   const patients = [];
-  const now = new Date();
+  const now = new Date('2025-12-02T23:59:59.999Z');
   const startDate = new Date(now.getTime() - daysOfHistory * 24 * 60 * 60 * 1000);
 
   let patientIndex = 1;
@@ -255,18 +256,36 @@ function generatePatients(beds, daysOfHistory) {
 
 function generateOccupancyHistory(beds, daysOfHistory) {
   const history = [];
-  const now = new Date();
+  // Set 'now' to December 2, 2025, 23:59:59 to ensure current data
+  const now = new Date('2025-12-02T23:59:59.999Z');
+
+  console.log(`Generating occupancy history from ${new Date(now.getTime() - daysOfHistory * 24 * 60 * 60 * 1000).toDateString()} to ${now.toDateString()}`);
 
   for (let day = daysOfHistory; day >= 0; day--) {
     const timestamp = new Date(now.getTime() - day * 24 * 60 * 60 * 1000);
     timestamp.setHours(23, 59, 59, 999);
 
-    // Simulate varying occupancy rates
+    // Create realistic occupancy trends over time
     const dayOfWeek = timestamp.getDay();
     const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
-    const baseOccupancy = CONFIG.AVG_OCCUPANCY_RATE + (isWeekend ? -0.1 : 0.05);
-    const variance = (Math.random() - 0.5) * 0.2;
-    const occupancyRate = Math.max(0.3, Math.min(0.95, baseOccupancy + variance));
+    
+    // Add seasonal trend: gradually increasing occupancy as we approach present
+    const trendFactor = 0.05 * (1 - day / daysOfHistory); // 0 to 0.05 increase over time
+    
+    // Add day-of-week pattern
+    const weekdayFactor = isWeekend ? -0.05 : 0.03;
+    
+    // Add some cyclical pattern (peaks every ~7-10 days)
+    const cyclicalFactor = 0.03 * Math.sin((day / 7) * Math.PI);
+    
+    // Random daily variance
+    const variance = (Math.random() - 0.5) * 0.08;
+    
+    // Calculate final occupancy rate
+    const baseOccupancy = CONFIG.AVG_OCCUPANCY_RATE;
+    const occupancyRate = Math.max(0.40, Math.min(0.95, 
+      baseOccupancy + trendFactor + weekdayFactor + cyclicalFactor + variance
+    ));
 
     const totalBeds = beds.length;
     const occupied = Math.round(totalBeds * occupancyRate);
@@ -275,9 +294,18 @@ function generateOccupancyHistory(beds, daysOfHistory) {
     const maintenance = randomInt(0, 2);
     const available = Math.max(0, totalBeds - occupied - cleaning - reserved - maintenance);
 
-    const wardStats = CONFIG.WARDS.map(ward => {
+    // Generate ward-specific stats with individual trends
+    const wardStats = CONFIG.WARDS.map((ward, wardIndex) => {
       const wardBeds = ward.beds;
-  const wardOccupied = Math.round(wardBeds * occupancyRate * (0.8 + Math.random() * 0.4));
+      
+      // Each ward has slightly different occupancy patterns
+      const wardVariance = (Math.random() - 0.5) * 0.12;
+      const wardTrend = trendFactor * (0.8 + wardIndex * 0.1); // Different growth rates
+      const wardOccupancyRate = Math.max(0.35, Math.min(0.98,
+        occupancyRate + wardVariance + wardTrend
+      ));
+      
+      const wardOccupied = Math.round(wardBeds * wardOccupancyRate);
       const wardCleaning = randomInt(0, 2);
       const wardReserved = randomInt(0, 1);
       const wardAvailable = Math.max(0, wardBeds - wardOccupied - wardCleaning - wardReserved);
@@ -312,7 +340,7 @@ function generateOccupancyHistory(beds, daysOfHistory) {
 
 function generateAlerts(daysOfHistory) {
   const alerts = [];
-  const now = new Date();
+  const now = new Date('2025-12-02T23:59:59.999Z');
 
   for (let day = daysOfHistory; day >= 0; day--) {
     const numAlerts = randomInt(2, 8);
@@ -342,7 +370,7 @@ function generateAlerts(daysOfHistory) {
 
 function generateCleaningJobs(beds, daysOfHistory) {
   const jobs = [];
-  const now = new Date();
+  const now = new Date('2025-12-02T23:59:59.999Z');
 
   for (let day = daysOfHistory; day >= 0; day--) {
     const numJobs = randomInt(3, 10);

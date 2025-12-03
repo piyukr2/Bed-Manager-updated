@@ -26,6 +26,10 @@ const bedSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId, 
     ref: 'Patient' 
   },
+  reservedForRequestId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'BedRequest'
+  },
   location: {
     floor: Number,
     section: String,

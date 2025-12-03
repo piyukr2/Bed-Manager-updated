@@ -10,7 +10,6 @@ import Home from './components/Home';
 // import AlertPanel from './components/AlertPanel';
 // import EmergencyAdmission from './components/EmergencyAdmission';
 import Login from './components/Login';
-import CriticalAlertModal from './components/CriticalAlertModal';
 // import FloorPlan from './components/FloorPlan';
 import ERStaffDashboard from './components/ERStaffDashboard';
 import ICUManagerDashboard from './components/ICUManagerDashboard';
@@ -32,11 +31,14 @@ function App() {
   const [stats, setStats] = useState(null);
   const [patients, setPatients] = useState([]);
   const [alerts, setAlerts] = useState([]);
+  const [settings, setSettings] = useState(null);
   const [selectedWard, setSelectedWard] = useState('All');
   // const [showEmergencyModal, setShowEmergencyModal] = useState(false);
   const [loading, setLoading] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState('disconnected');
   const [criticalAlerts, setCriticalAlerts] = useState([]);
+  const [exceededThresholds, setExceededThresholds] = useState({});
+  const [alertCheckTimeout, setAlertCheckTimeout] = useState(null);
   const [theme, setTheme] = useState(() => {
     if (typeof window === 'undefined') return 'light';
     const stored = localStorage.getItem('bedmanager-theme');
@@ -163,6 +165,11 @@ function App() {
       });
     });
 
+    socket.on('settings-updated', (updatedSettings) => {
+      console.log('Settings updated:', updatedSettings);
+      setSettings(updatedSettings);
+    });
+
     socket.on('data-initialized', ({ bedsCreated, patientsCreated }) => {
       addAlert({
         type: 'success',
@@ -189,11 +196,202 @@ function App() {
       fetchData();
       initializeSampleData();
 
+      // Reset exceeded thresholds when ICU manager logs in to trigger initial check
+      if (currentUser.role === 'icu_manager') {
+        setExceededThresholds({});
+        setCriticalAlerts([]);
+      }
+
       const interval = setInterval(fetchData, 5 * 60 * 1000);
       return () => clearInterval(interval);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser]);
+
+  // Monitor occupancy thresholds and trigger critical alerts (ICU Manager only)
+  // Uses debouncing + smart threshold tracking to prevent rapid-fire alerts
+  useEffect(() => {
+    console.log('🔄 Alert Check Effect Triggered');
+    console.log('   Current User:', currentUser?.name, 'Role:', currentUser?.role);
+    console.log('   Stats Available:', !!stats, 'Settings Available:', !!settings);
+    
+    // Only show alerts for ICU managers
+    if (!currentUser || currentUser.role !== 'icu_manager') {
+      console.log('   ❌ Not ICU Manager - skipping alert check');
+      return;
+    }
+    if (!stats || !settings || !settings.thresholds) {
+      console.log('   ❌ Missing stats or settings - skipping alert check');
+      return;
+    }
+
+    console.log('   ✅ Proceeding with alert check...');
+
+    // Clear any existing timeout to debounce rapid changes
+    if (alertCheckTimeout) {
+      clearTimeout(alertCheckTimeout);
+      console.log('   🕐 Cleared previous timeout');
+    }
+
+    // Debounce: Wait 1.5 seconds after last stats update before checking thresholds
+    const timeout = setTimeout(() => {
+      console.log('⏰ Debounce Complete - Starting threshold check...');
+      const { warningThreshold, criticalThreshold } = settings.thresholds;
+      const newAlerts = [];
+      const newExceededState = {};
+
+      console.log('🔍 Checking thresholds - Current settings:', { warningThreshold, criticalThreshold, selectedWard });
+      console.log('📋 Current Exceeded Thresholds State:', exceededThresholds);
+
+      // Check individual ward occupancy
+      if (stats.wardStats && Array.isArray(stats.wardStats)) {
+        console.log(`📊 Checking ${stats.wardStats.length} wards...`);
+        stats.wardStats.forEach(ward => {
+          // Backend returns ward._id for ward name, and ward.occupied/ward.total for bed counts
+          const wardName = ward.ward || ward._id;
+          const wardOccupied = ward.occupied || 0;
+          const wardTotal = ward.total || 1;
+          const wardOccupancy = (wardOccupied / wardTotal) * 100;
+          console.log(`\n🏥 Ward: ${wardName}`);
+          console.log(`   Beds: ${wardOccupied}/${wardTotal} (${wardOccupancy.toFixed(1)}%)`);
+          console.log(`   Previous Threshold: ${exceededThresholds[wardName] || 'none'}`);
+          
+          const wardKey = wardName;
+          
+          // Determine what threshold level we're at now
+          let currentThresholdLevel = 'none';
+          if (wardOccupancy >= criticalThreshold) {
+            currentThresholdLevel = 'critical';
+          } else if (wardOccupancy >= warningThreshold) {
+            currentThresholdLevel = 'warning';
+          }
+          
+          // Store current threshold level (IMPORTANT: Store for ALL wards, not just selected)
+          newExceededState[wardKey] = currentThresholdLevel;
+          
+          // Get previous threshold level
+          const previousThresholdLevel = exceededThresholds[wardKey] || 'none';
+          
+          console.log(`   Current: ${currentThresholdLevel}, Previous: ${previousThresholdLevel}`);
+          
+          // Only alert if we crossed into a NEW threshold level
+          // (not if we were already at that level or above)
+          if (currentThresholdLevel === 'critical' && previousThresholdLevel !== 'critical') {
+            console.log(`   ⚠️ CRITICAL ALERT for ${wardName}!`);
+            newAlerts.push({
+              id: `critical-${wardName}-${Date.now()}`,
+              severity: 'critical',
+              title: `CRITICAL: ${wardName} Occupancy`,
+              message: `${wardName} occupancy has reached critical level: ${wardOccupancy.toFixed(1)}%`,
+              occupancyRate: parseFloat(wardOccupancy.toFixed(1)),
+              wardName: wardName,
+              ward: wardName,
+              threshold: criticalThreshold,
+              totalBeds: wardTotal,
+              occupied: wardOccupied,
+              available: wardTotal - wardOccupied,
+              timestamp: new Date()
+            });
+          } else if (currentThresholdLevel === 'warning' && previousThresholdLevel === 'none') {
+            // Only show warning if we weren't already at warning or critical
+            newAlerts.push({
+              id: `warning-${wardName}-${Date.now()}`,
+              severity: 'warning',
+              title: `WARNING: ${wardName} Occupancy`,
+              message: `${wardName} occupancy has reached warning level: ${wardOccupancy.toFixed(1)}%`,
+              occupancyRate: parseFloat(wardOccupancy.toFixed(1)),
+              wardName: wardName,
+              ward: wardName,
+              threshold: warningThreshold,
+              totalBeds: wardTotal,
+              occupied: wardOccupied,
+              available: wardTotal - wardOccupied,
+              timestamp: new Date()
+            });
+          }
+        });
+      }
+
+      // Also check overall hospital occupancy if viewing 'All' wards
+      if (!selectedWard || selectedWard === 'All') {
+        const overallOccupancy = stats.occupancyRate;
+        const overallKey = 'overall-hospital';
+        
+        // Determine what threshold level we're at now
+        let currentThresholdLevel = 'none';
+        if (overallOccupancy >= criticalThreshold) {
+          currentThresholdLevel = 'critical';
+        } else if (overallOccupancy >= warningThreshold) {
+          currentThresholdLevel = 'warning';
+        }
+        
+        // Store current threshold level
+        newExceededState[overallKey] = currentThresholdLevel;
+        
+        // Get previous threshold level
+        const previousThresholdLevel = exceededThresholds[overallKey] || 'none';
+        
+        // Only alert if we crossed into a NEW threshold level
+        if (currentThresholdLevel === 'critical' && previousThresholdLevel !== 'critical') {
+          newAlerts.push({
+            id: `critical-overall-${Date.now()}`,
+            severity: 'critical',
+            title: 'CRITICAL: Hospital Occupancy',
+            message: `Hospital occupancy has reached critical level: ${overallOccupancy.toFixed(1)}%`,
+            occupancyRate: parseFloat(overallOccupancy.toFixed(1)),
+            wardName: 'Overall Hospital',
+            ward: 'All',
+            threshold: criticalThreshold,
+            totalBeds: stats.totalBeds,
+            occupied: stats.occupied,
+            available: stats.available,
+            timestamp: new Date()
+          });
+        } else if (currentThresholdLevel === 'warning' && previousThresholdLevel === 'none') {
+          newAlerts.push({
+            id: `warning-overall-${Date.now()}`,
+            severity: 'warning',
+            title: 'WARNING: Hospital Occupancy',
+            message: `Hospital occupancy has reached warning level: ${overallOccupancy.toFixed(1)}%`,
+            occupancyRate: parseFloat(overallOccupancy.toFixed(1)),
+            wardName: 'Overall Hospital',
+            ward: 'All',
+            threshold: warningThreshold,
+            totalBeds: stats.totalBeds,
+            occupied: stats.occupied,
+            available: stats.available,
+            timestamp: new Date()
+          });
+        }
+      }
+
+      // Update exceeded thresholds state
+      setExceededThresholds(newExceededState);
+
+      // Only add new alerts if threshold boundaries were crossed
+      if (newAlerts.length > 0) {
+        console.log('🚨 Threshold Alert Triggered:', newAlerts);
+        console.log('   Setting Critical Alerts State...');
+        setCriticalAlerts(prev => {
+          // Remove old alerts for the same wards/overall
+          const alertWardNames = newAlerts.map(a => a.wardName);
+          const filtered = prev.filter(a => !alertWardNames.includes(a.wardName));
+          const updatedAlerts = [...filtered, ...newAlerts];
+          console.log('   📢 Updated Critical Alerts:', updatedAlerts);
+          return updatedAlerts;
+        });
+      } else {
+        console.log('   ℹ️ No new alerts to add');
+      }
+    }, 1500); // 1.5 second debounce delay
+
+    setAlertCheckTimeout(timeout);
+
+    // Cleanup timeout on unmount
+    return () => {
+      if (timeout) clearTimeout(timeout);
+    };
+  }, [stats, settings, selectedWard, currentUser, exceededThresholds]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleGetStarted = () => {
     setShowHome(false);
@@ -272,7 +470,7 @@ function App() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      await Promise.all([fetchBeds(), fetchStats(), fetchPatients(), fetchAlerts()]);
+      await Promise.all([fetchBeds(), fetchStats(), fetchPatients(), fetchAlerts(), fetchSettings()]);
     } catch (error) {
       console.error('Error fetching data:', error);
       if (error.response?.status === 401 || error.response?.status === 403) {
@@ -334,6 +532,15 @@ function App() {
     }
   };
 
+  const fetchSettings = async () => {
+    try {
+      const response = await axios.get(`${API_URL}/settings`);
+      setSettings(response.data);
+    } catch (error) {
+      console.error('Error fetching settings:', error);
+    }
+  };
+
   const addAlert = useCallback((alert) => {
     const alertId = alert.id || alert._id || `${Date.now()}-${Math.random()}`;
     const alertPayload = { ...alert, id: alertId };
@@ -345,6 +552,15 @@ function App() {
 
     if (alertPayload.type === 'critical') {
       setCriticalAlerts(prev => [...prev, alertPayload]);
+    }
+  }, []);
+
+  const handleDismissAlert = useCallback((alertId) => {
+    if (alertId) {
+      setCriticalAlerts(prev => prev.filter(alert => alert.id !== alertId));
+    } else {
+      // If no alertId provided, remove the first alert (currently displayed one)
+      setCriticalAlerts(prev => prev.slice(1));
     }
   }, []);
 
@@ -441,10 +657,6 @@ function App() {
     }
   };
 
-  const handleDismissCriticalAlert = () => {
-    setCriticalAlerts(prev => prev.slice(1));
-  };
-
   // Show home page
   if (showHome) {
     return (
@@ -520,6 +732,8 @@ function App() {
             onDischargePatient={dischargePatient}
             selectedWard={selectedWard}
             setSelectedWard={setSelectedWard}
+            criticalAlerts={criticalAlerts}
+            onDismissAlert={handleDismissAlert}
           />
         );
 
@@ -589,10 +803,6 @@ function App() {
   return (
     <>
       {renderDashboard()}
-      <CriticalAlertModal
-        alert={criticalAlerts[0]}
-        onDismiss={handleDismissCriticalAlert}
-      />
     </>
   );
 }

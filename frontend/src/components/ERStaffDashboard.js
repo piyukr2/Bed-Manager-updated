@@ -19,6 +19,15 @@ function ERStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socket 
   const [searchQuery, setSearchQuery] = useState(''); // Search by bed number or patient name
   // eslint-disable-next-line no-unused-vars
   const [settings, setSettings] = useState(null);
+  const [errorNotification, setErrorNotification] = useState({ show: false, message: '', type: 'error' });
+
+  // Simple notification function for errors
+  const showErrorNotification = (type, message) => {
+    setErrorNotification({ show: true, message, type });
+    setTimeout(() => {
+      setErrorNotification({ show: false, message: '', type: 'error' });
+    }, 5000);
+  };
 
   // Play notification sound function
   const playNotificationSound = () => {
@@ -260,7 +269,7 @@ function ERStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socket 
       fetchStats();
     } catch (error) {
       console.error('Error creating request:', error);
-      alert(error.response?.data?.error || 'Failed to create bed request');
+      showErrorNotification('error', error.response?.data?.error || 'Failed to create bed request');
     } finally {
       setLoading(false);
     }
@@ -290,7 +299,7 @@ function ERStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socket 
         fetchStats(); // Update counts
       } catch (error) {
         console.error('Error deleting request:', error);
-        alert(error.response?.data?.error || 'Failed to delete request');
+        showErrorNotification('error', error.response?.data?.error || 'Failed to delete request');
       }
       return;
     }
@@ -314,7 +323,7 @@ function ERStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socket 
       fetchAvailabilitySummary();
     } catch (error) {
       console.error('Error cancelling request:', error);
-      alert(error.response?.data?.error || 'Failed to cancel request');
+      showErrorNotification('error', error.response?.data?.error || 'Failed to cancel request');
     }
   };
 
@@ -723,6 +732,24 @@ function ERStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socket 
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Error Notification Toast */}
+      {errorNotification.show && (
+        <div style={{
+          position: 'fixed',
+          top: '20px',
+          right: '20px',
+          backgroundColor: errorNotification.type === 'success' ? '#4CAF50' : '#f44336',
+          color: 'white',
+          padding: '16px',
+          borderRadius: '4px',
+          boxShadow: '0 2px 5px rgba(0,0,0,0.2)',
+          zIndex: 9999,
+          minWidth: '300px'
+        }}>
+          {errorNotification.message}
         </div>
       )}
     </div>
