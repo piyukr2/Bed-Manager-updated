@@ -7,6 +7,7 @@ import ResizableCard from './ResizableCard';
 import WardView from './WardView';
 // import FloorPlan from './FloorPlan';
 import EmergencyAdmission from './EmergencyAdmission';
+import CriticalAlertModal from './CriticalAlertModal';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
@@ -25,7 +26,9 @@ function ICUManagerDashboard({
   onEmergencyAdmission,
   onDischargePatient,
   selectedWard,
-  setSelectedWard
+  setSelectedWard,
+  criticalAlerts,
+  onDismissAlert
 }) {
   const [bedRequests, setBedRequests] = useState([]);
   const [showEmergencyModal, setShowEmergencyModal] = useState(false);
@@ -51,6 +54,16 @@ function ICUManagerDashboard({
   const [showTransferDenyModal, setShowTransferDenyModal] = useState(false);
   const [transferDenyReason, setTransferDenyReason] = useState('');
   const [transferToDeny, setTransferToDeny] = useState(null);
+
+  // Notification state
+  const [notification, setNotification] = useState({ show: false, type: '', message: '' });
+
+  const showNotification = (type, message) => {
+    setNotification({ show: true, type, message });
+    setTimeout(() => {
+      setNotification({ show: false, type: '', message: '' });
+    }, 5000);
+  };
 
   // Play notification sound function
   const playNotificationSound = () => {
@@ -105,6 +118,16 @@ function ICUManagerDashboard({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Debug: Monitor criticalAlerts prop
+  useEffect(() => {
+    console.log('🎯 ICUManagerDashboard - Critical Alerts Updated:', criticalAlerts);
+    if (criticalAlerts && criticalAlerts.length > 0) {
+      console.log('   ✅ Should show modal for:', criticalAlerts[0]);
+    } else {
+      console.log('   ❌ No critical alerts to show');
+    }
+  }, [criticalAlerts]);
 
   useEffect(() => {
     fetchBedRequests();
@@ -194,17 +217,31 @@ function ICUManagerDashboard({
     setSelectedRequest(request);
     setShowRequestModal(true);
 
-    // Fetch recommended beds
+    // Fetch recommended beds - now returns up to 3 options
     try {
       const response = await axios.post(`${API_URL}/beds/recommend`, {
         ward: request.preferredWard,
         equipmentType: request.patientDetails.requiredEquipment,
-        urgency: 'normal'
+        urgency: 'normal',
+        limit: 3 // Request up to 3 bed options (max enforced by backend)
       });
 
-      if (response.data.bed) {
+      console.log('Bed recommendation response:', response.data);
+
+      if (response.data.beds && response.data.beds.length > 0) {
+        // Extract bed objects from the response structure
+        const beds = response.data.beds.map(item => ({
+          ...item.bed,
+          matchLevel: item.matchLevel
+        }));
+        console.log(`Setting ${beds.length} recommended beds:`, beds);
+        setRecommendedBeds(beds);
+      } else if (response.data.bed) {
+        // Fallback for old API format (single bed)
+        console.log('Using fallback single bed format');
         setRecommendedBeds([response.data.bed]);
       } else if (response.data.alternatives) {
+        console.log('No available beds, showing alternatives');
         setRecommendedBeds([
           ...(response.data.alternatives.cleaning || []),
           ...(response.data.alternatives.reserved || [])
@@ -238,7 +275,7 @@ function ICUManagerDashboard({
       // No manual refresh needed - socket.io handles real-time updates
     } catch (error) {
       console.error('Error approving request:', error);
-      alert(error.response?.data?.error || 'Failed to approve request');
+      showNotification('error', error.response?.data?.error || 'Failed to approve request');
     }
   };
 
@@ -250,7 +287,7 @@ function ICUManagerDashboard({
 
   const confirmDenyRequest = async () => {
     if (!denyReason.trim()) {
-      alert('Please enter a reason for denial');
+      showNotification('error', 'Please enter a reason for denial');
       return;
     }
 
@@ -267,7 +304,7 @@ function ICUManagerDashboard({
       fetchBedRequests();
     } catch (error) {
       console.error('Error denying request:', error);
-      alert(error.response?.data?.error || 'Failed to deny request');
+      showNotification('error', error.response?.data?.error || 'Failed to deny request');
     }
   };
 
@@ -284,7 +321,7 @@ function ICUManagerDashboard({
       // No popup shown - silent success
     } catch (error) {
       console.error('Error approving transfer:', error);
-      alert(error.response?.data?.error || 'Failed to approve transfer');
+      showNotification('error', error.response?.data?.error || 'Failed to approve transfer');
     }
   };
 
@@ -295,7 +332,7 @@ function ICUManagerDashboard({
 
   const confirmDenyTransfer = async () => {
     if (!transferDenyReason.trim()) {
-      alert('Please provide a reason for denial');
+      showNotification('error', 'Please provide a reason for denial');
       return;
     }
 
@@ -316,7 +353,7 @@ function ICUManagerDashboard({
       // No popup shown - silent success
     } catch (error) {
       console.error('Error denying transfer:', error);
-      alert(error.response?.data?.error || 'Failed to deny transfer');
+      showNotification('error', error.response?.data?.error || 'Failed to deny transfer');
     }
   };
 
@@ -459,7 +496,7 @@ function ICUManagerDashboard({
     } catch (error) {
       console.error('Error creating emergency admission:', error);
       const errorMessage = error.response?.data?.error || error.response?.data?.message || 'Failed to create emergency admission';
-      alert(`Error: ${errorMessage}`);
+      showNotification('error', `Error: ${errorMessage}`);
     } finally {
       setLoading(false);
     }
@@ -1040,7 +1077,13 @@ function ICUManagerDashboard({
               </div>
 
               <div className="recommended-beds-section">
-                <h3>Recommended Beds {selectedRequest.preferredWard && `for ${selectedRequest.preferredWard} Ward`}</h3>
+                <h3>
+                  {recommendedBeds.length > 0 
+                    ? `${recommendedBeds.length} Available Bed Option${recommendedBeds.length > 1 ? 's' : ''}`
+                    : 'Recommended Beds'
+                  }
+                  {selectedRequest.preferredWard && ` for ${selectedRequest.preferredWard} Ward`}
+                </h3>
                 {recommendedBeds.length === 0 ? (
                   <p className="no-recommendations">No available beds match the requirements. Consider manual assignment.</p>
                 ) : (
@@ -1052,17 +1095,38 @@ function ICUManagerDashboard({
                       </div>
                     )}
                     <div className="recommended-beds-list">
-                      {recommendedBeds.map((bed) => {
+                      {recommendedBeds.map((bed, index) => {
                         const isWardMismatch = selectedRequest.preferredWard &&
                                              selectedRequest.preferredWard !== 'Any' &&
                                              bed.ward !== selectedRequest.preferredWard;
+                        
+                        // Get match level badge
+                        const getMatchBadge = (matchLevel) => {
+                          switch(matchLevel) {
+                            case 'perfect':
+                              return <span className="match-badge perfect">✓ Perfect Match</span>;
+                            case 'ward_match':
+                              return <span className="match-badge ward">Ward Match</span>;
+                            case 'equipment_match':
+                              return <span className="match-badge equipment">Equipment Match</span>;
+                            case 'any_available':
+                              return <span className="match-badge available">Available</span>;
+                            default:
+                              return null;
+                          }
+                        };
+
                         return (
                           <div
                             key={bed._id}
-                            className={`recommended-bed-card ${isWardMismatch ? 'ward-mismatch' : ''}`}
+                            className={`recommended-bed-card ${isWardMismatch ? 'ward-mismatch' : ''} ${index === 0 ? 'top-recommendation' : ''}`}
                           >
                             <div className="bed-card-info">
-                              <h4>{bed.bedNumber}</h4>
+                              <div className="bed-card-header-row">
+                                <h4>{bed.bedNumber}</h4>
+                                {bed.matchLevel && getMatchBadge(bed.matchLevel)}
+                                {index === 0 && <span className="best-match-badge">⭐ Best Match</span>}
+                              </div>
                               <span className={`bed-ward ${isWardMismatch ? 'highlight-mismatch' : ''}`}>
                                 {bed.ward}
                                 {isWardMismatch && ' ⚠️'}
@@ -1286,10 +1350,10 @@ function ICUManagerDashboard({
                 className="btn-notification-view"
                 onClick={() => {
                   setShowNewTransferAlert(false);
-                  setActiveTab('transfers');
+                  handleApproveTransfer(newTransferNotification._id);
                 }}
               >
-                View Transfer Requests
+                Approve Transfer
               </button>
             </div>
           </div>
@@ -1339,6 +1403,32 @@ function ICUManagerDashboard({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Notification Toast */}
+      {notification.show && (
+        <div style={{
+          position: 'fixed',
+          top: '20px',
+          right: '20px',
+          backgroundColor: notification.type === 'success' ? '#4CAF50' : '#f44336',
+          color: 'white',
+          padding: '16px',
+          borderRadius: '4px',
+          boxShadow: '0 2px 5px rgba(0,0,0,0.2)',
+          zIndex: 9999,
+          minWidth: '300px'
+        }}>
+          {notification.message}
+        </div>
+      )}
+
+      {/* Critical Alert Modal */}
+      {criticalAlerts && criticalAlerts.length > 0 && (
+        <CriticalAlertModal 
+          alert={criticalAlerts[0]} 
+          onDismiss={onDismissAlert} 
+        />
       )}
     </div>
   );

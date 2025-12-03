@@ -13,6 +13,7 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
   const [history, setHistory] = useState([]);
   const [bedRequests, setBedRequests] = useState([]);
   const [requestStats, setRequestStats] = useState(null);
+  const [wardTransfers, setWardTransfers] = useState([]);
   const [period, setPeriod] = useState('today');
   const [requestsPeriod, setRequestsPeriod] = useState('today'); // 'today', '7d', '30d'
   const [activeTab, setActiveTab] = useState('overview'); // 'overview', 'analytics', 'requests', 'settings'
@@ -22,6 +23,7 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
   const [selectedWard, setSelectedWard] = useState('All');
   const [todayHourlySource, setTodayHourlySource] = useState(null);
   const [scheduledDischarges, setScheduledDischarges] = useState(0);
+  const [wardForecasts, setWardForecasts] = useState(null); // Store forecasts with discharge adjustments
 
   // Seed data import state
   const [seedFile, setSeedFile] = useState(null);
@@ -164,6 +166,21 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
     }
   }, [activeTab]);
 
+  // Calculate ward forecasts when history or stats change
+  useEffect(() => {
+    if (history && history.length > 0 && stats && period === 'today') {
+      calculateWardForecasts().then(forecasts => {
+        setWardForecasts(forecasts);
+      }).catch(error => {
+        console.error('Error calculating forecasts:', error);
+        setWardForecasts(null);
+      });
+    } else {
+      setWardForecasts(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [history, stats, period]);
+
   useEffect(() => {
     if (!socket) return;
 
@@ -230,6 +247,7 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
     socket.on('ward-transfer-updated', () => {
       fetchStats();
       fetchHistory();
+      fetchWardTransfers();
     });
 
     // Settings events
@@ -292,6 +310,7 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
         fetchHistory(),
         fetchBedRequests(),
         fetchRequestStats(),
+        fetchWardTransfers(),
         fetchSettings(),
         fetchScheduledDischarges()
       ]);
@@ -317,14 +336,65 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
   const fetchHistory = async () => {
     try {
       const effectivePeriod = period;
+      let historyData = [];
+      
+      // Multi-level fallback strategy for fetching sufficient historical data
+      console.log(`📊 Fetching history for period: ${effectivePeriod}`);
+      
       const response = await axios.get(`${API_URL}/beds/history?period=${effectivePeriod}`);
       if (effectivePeriod !== period) {
         return;
       }
 
-      const historyData = response.data;
-      console.log('History fetched successfully:', historyData.length, 'records');
+      historyData = response.data;
+      console.log(`✅ Initial fetch: ${historyData.length} records for ${effectivePeriod}`);
+
+      // For professional forecasting, we need at least 15 data points for meaningful predictions
+      // This aligns with our 15-day forecasting window
+      // Implement progressive fallback to get sufficient REAL data (no synthetic!)
+      const MIN_FORECAST_RECORDS = 15;
+      
+      if (historyData.length < MIN_FORECAST_RECORDS) {
+        console.warn(`⚠️ Insufficient data (${historyData.length}/${MIN_FORECAST_RECORDS}) - Attempting fallback...`);
+        
+        // Fallback Level 1: Try 7 days if we were requesting 'today'
+        if (effectivePeriod === 'today') {
+          try {
+            console.log('🔄 Fallback Level 1: Fetching 7 days...');
+            const fallback7d = await axios.get(`${API_URL}/beds/history?period=7d`);
+            if (fallback7d.data.length > historyData.length) {
+              historyData = fallback7d.data;
+              console.log(`✅ Fallback Level 1: Found ${historyData.length} records`);
+            }
+          } catch (err) {
+            console.error('❌ Fallback Level 1 failed:', err.message);
+          }
+        }
+        
+        // Fallback Level 2: Try 30 days if still insufficient
+        if (historyData.length < MIN_FORECAST_RECORDS && effectivePeriod !== '30d') {
+          try {
+            console.log('🔄 Fallback Level 2: Fetching 30 days...');
+            const fallback30d = await axios.get(`${API_URL}/beds/history?period=30d`);
+            if (fallback30d.data.length > historyData.length) {
+              historyData = fallback30d.data;
+              console.log(`✅ Fallback Level 2: Found ${historyData.length} records`);
+            }
+          } catch (err) {
+            console.error('❌ Fallback Level 2 failed:', err.message);
+          }
+        }
+        
+        // If still insufficient, warn user - DO NOT use synthetic data
+        if (historyData.length < MIN_FORECAST_RECORDS) {
+          console.error(`❌ CRITICAL: Insufficient historical data (${historyData.length}/${MIN_FORECAST_RECORDS})`);
+          console.error('📌 SOLUTION: System needs to collect real occupancy data over time');
+          console.error('📌 Either: 1) Import historical seed data, or 2) Wait for system to collect daily snapshots');
+        }
+      }
+
       setHistory(historyData);
+      console.log(`📈 Final history data: ${historyData.length} records available for analysis`);
 
       if (effectivePeriod === 'today') {
         const todayRecord = findHistoryRecordForDate(historyData, new Date());
@@ -397,6 +467,17 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
     }
   };
 
+  const fetchWardTransfers = async () => {
+    try {
+      const response = await axios.get(`${API_URL}/ward-transfers`);
+      console.log('Ward transfers fetched successfully:', response.data.length, 'transfers');
+      setWardTransfers(response.data);
+    } catch (error) {
+      console.error('Error fetching ward transfers:', error);
+      console.error('Error details:', error.response?.data);
+    }
+  };
+
   const fetchSettings = async () => {
     try {
       console.log('Fetching settings from:', `${API_URL}/settings`);
@@ -419,6 +500,40 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
       setScheduledDischarges(response.data.count);
     } catch (error) {
       console.error('Error fetching scheduled discharges:', error);
+    }
+  };
+
+  // Fetch detailed discharge schedule for forecasting
+  const fetchDischargeSchedule = async () => {
+    try {
+      // Fetch patients with expected discharge dates
+      const response = await axios.get(`${API_URL}/patients`);
+      const patients = response.data;
+      
+      // Group by ward and expected discharge date
+      const dischargeSchedule = {};
+      
+      patients.forEach(patient => {
+        if (patient.expectedDischarge && patient.status !== 'discharged' && patient.department) {
+          const dischargeDate = new Date(patient.expectedDischarge);
+          const ward = patient.department;
+          
+          if (!dischargeSchedule[ward]) {
+            dischargeSchedule[ward] = {};
+          }
+          
+          const dateKey = dischargeDate.toISOString().split('T')[0]; // YYYY-MM-DD
+          if (!dischargeSchedule[ward][dateKey]) {
+            dischargeSchedule[ward][dateKey] = 0;
+          }
+          dischargeSchedule[ward][dateKey]++;
+        }
+      });
+      
+      return dischargeSchedule;
+    } catch (error) {
+      console.error('Error fetching discharge schedule:', error);
+      return {};
     }
   };
 
@@ -467,7 +582,7 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
 
     try {
       const response = await axios.post(`${API_URL}/users`, userForm);
-      alert(`User "${response.data.user.username}" created successfully!`);
+      showNotification(`User "${response.data.user.username}" created successfully!`, 'success');
       
       // Reset form
       setUserForm({
@@ -482,7 +597,7 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
       fetchUsers();
     } catch (error) {
       console.error('Error creating user:', error);
-      alert(error.response?.data?.error || 'Failed to create user');
+      showNotification(error.response?.data?.error || 'Failed to create user', 'error');
     }
   };
 
@@ -510,7 +625,7 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
       }
 
       const response = await axios.put(`${API_URL}/users/${editingUser.id}`, updateData);
-      alert(`User "${response.data.user.username}" updated successfully!`);
+      showNotification(`User "${response.data.user.username}" updated successfully!`, 'success');
       
       // Reset form
       setUserForm({
@@ -526,7 +641,7 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
       fetchUsers();
     } catch (error) {
       console.error('Error updating user:', error);
-      alert(error.response?.data?.error || 'Failed to update user');
+      showNotification(error.response?.data?.error || 'Failed to update user', 'error');
     }
   };
 
@@ -537,13 +652,13 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
 
     try {
       await axios.delete(`${API_URL}/users/${user.id}`);
-      alert(`User "${user.username}" deleted successfully!`);
+      showNotification(`User "${user.username}" deleted successfully!`, 'success');
       
       // Refresh users list
       fetchUsers();
     } catch (error) {
       console.error('Error deleting user:', error);
-      alert(error.response?.data?.error || 'Failed to delete user');
+      showNotification(error.response?.data?.error || 'Failed to delete user', 'error');
     }
   };
 
@@ -714,15 +829,40 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
     };
   };
 
-  const calculateWardForecasts = () => {
-    if ((!history || history.length === 0) && !stats) return null;
+  const calculateWardForecasts = async () => {
+    if ((!history || history.length === 0) && !stats) {
+      console.warn('⚠️ No history or stats available for forecasting');
+      return null;
+    }
 
     const wards = ['Emergency', 'ICU', 'General Ward', 'Cardiology'];
-    const recent = history.slice(-6);
+    
+    // Fetch discharge schedule for discharge-adjusted forecasting
+    const dischargeSchedule = await fetchDischargeSchedule();
+    
+    // Use last 15 days of data for professional-grade forecasting
+    const recent = history.slice(-15);
     const wardForecasts = [];
 
+    console.log('🔮 Forecast Calculation Started:');
+    console.log('  Period:', period);
+    console.log('  Total history records:', history.length);
+    console.log('  Using recent records for forecasting:', recent.length);
+    console.log('  Forecast window: Last 15 days for accurate predictions');
+    console.log('  Discharge schedule loaded:', Object.keys(dischargeSchedule).length > 0 ? 'YES ✅' : 'NO');
+    
+    if (recent.length > 0 && recent[0].timestamp) {
+      const oldestDate = new Date(recent[0].timestamp);
+      const newestDate = new Date(recent[recent.length - 1].timestamp);
+      const daysDiff = (newestDate - oldestDate) / (1000 * 60 * 60 * 24);
+      console.log('  Data age range:', daysDiff.toFixed(1), 'days');
+      console.log('  Oldest data:', oldestDate.toLocaleDateString());
+      console.log('  Newest data:', newestDate.toLocaleDateString());
+      console.log('  Today:', new Date().toLocaleDateString());
+    }
+
     for (const ward of wards) {
-      // Calculate trend for this ward
+      // Extract ward-specific occupancy rates from historical data
       let wardOccupancies = recent
         .map(h => {
           if (h.wardStats && Array.isArray(h.wardStats)) {
@@ -733,6 +873,13 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
         })
         .filter(v => v !== null);
 
+      console.log(`\n🏥 ${ward}:`);
+      console.log('  Historical data points from DB:', wardOccupancies.length);
+      if (wardOccupancies.length > 0) {
+        console.log('  Historical values:', wardOccupancies.map(v => v.toFixed(1)).join(', '));
+      }
+
+      // Get current real-time occupancy
       const currentWardStat = stats?.wardStats?.find(w => w._id === ward);
       const currentOccupancy = currentWardStat && currentWardStat.total > 0
         ? parseFloat(((currentWardStat.occupied / currentWardStat.total) * 100).toFixed(1))
@@ -740,16 +887,33 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
           ? parseFloat(wardOccupancies[wardOccupancies.length - 1].toFixed(1))
           : null;
 
+      console.log('  Current occupancy from stats:', currentOccupancy);
+
+      // DYNAMIC SOLUTION: Add current value to historical data if significantly different
       if (wardOccupancies.length === 0 && currentOccupancy !== null) {
+        // No historical data, use current as single data point
+        // This is acceptable for displaying current state, but not enough for forecasting
         wardOccupancies = [currentOccupancy];
+        console.log('  ⚠️ No historical data - using current value as baseline (insufficient for forecasting)');
       } else if (wardOccupancies.length > 0 && currentOccupancy !== null) {
-        const lastValue = wardOccupancies[wardOccupancies.length - 1];
-        if (Math.abs(lastValue - currentOccupancy) > 0.1) {
+        const lastHistoricalValue = wardOccupancies[wardOccupancies.length - 1];
+        const difference = Math.abs(lastHistoricalValue - currentOccupancy);
+        
+        // If current differs from last historical by more than 0.1%, add it
+        if (difference > 0.1) {
           wardOccupancies = [...wardOccupancies, currentOccupancy];
+          console.log(`  ✅ Added current value (${difference.toFixed(1)}% diff from last historical)`);
+        } else {
+          console.log('  ℹ️ Current value same as last historical');
         }
       }
 
-      if (wardOccupancies.length === 0) continue;
+      if (wardOccupancies.length === 0) {
+        console.log('  ❌ No data available - skipping ward');
+        continue;
+      }
+
+      console.log('  Final data points for forecasting:', wardOccupancies.length);
 
       const avgOccupancy = wardOccupancies.reduce((sum, v) => sum + v, 0) / wardOccupancies.length;
       let trend = 0;
@@ -782,20 +946,62 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
 
         // Project next period using current value and last forecast
         projectedOccupancy = alpha * currentValue + (1 - alpha) * forecast;
+        console.log(`🔍 ${ward} - Exponential Smoothing Applied:`, {
+          dataPoints: wardOccupancies.length,
+          finalForecast: forecast.toFixed(2),
+          currentValue: currentValue.toFixed(2),
+          projectedBeforeDischarges: projectedOccupancy.toFixed(2)
+        });
       } else {
         // If not enough data, use current value
         projectedOccupancy = currentValue;
+        console.log(`🔍 ${ward} - INSUFFICIENT DATA (${wardOccupancies.length} points) - Using current value:`, currentValue.toFixed(2));
+      }
+
+      // 🆕 DISCHARGE-ADJUSTED FORECASTING
+      // Adjust projection based on scheduled discharges
+      let dischargeAdjustment = 0;
+      let scheduledDischargesCount = 0;
+      
+      if (dischargeSchedule[ward] && currentWardStat) {
+        // Check discharges for tomorrow (next day prediction)
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        const tomorrowKey = tomorrow.toISOString().split('T')[0];
+        
+        scheduledDischargesCount = dischargeSchedule[ward][tomorrowKey] || 0;
+        
+        if (scheduledDischargesCount > 0) {
+          // Calculate impact: each discharge reduces occupancy
+          // Impact = (discharged beds / total beds) * 100%
+          const totalBeds = currentWardStat.total;
+          dischargeAdjustment = -(scheduledDischargesCount / totalBeds) * 100;
+          
+          console.log(`  📅 Scheduled Discharges for ${tomorrow.toLocaleDateString()}:`, scheduledDischargesCount);
+          console.log(`  📉 Discharge Impact: ${dischargeAdjustment.toFixed(2)}% reduction`);
+          
+          // Apply discharge adjustment
+          projectedOccupancy = projectedOccupancy + dischargeAdjustment;
+        }
       }
 
       // Ensure projection is within valid range [0, 100]
       projectedOccupancy = Math.max(0, Math.min(100, projectedOccupancy));
 
+      const finalProjection = parseFloat(projectedOccupancy.toFixed(1));
+      
+      if (scheduledDischargesCount > 0) {
+        console.log(`  ✅ Final Projection (with ${scheduledDischargesCount} discharge${scheduledDischargesCount > 1 ? 's' : ''}): ${finalProjection}%`);
+      }
+
       wardForecasts.push({
         ward,
         current: parseFloat(currentValue.toFixed(1)),
-        projected: parseFloat(projectedOccupancy.toFixed(1)),
+        projected: finalProjection,
         trend: trendType,
-        trendValue: Math.abs(trend).toFixed(1)
+        trendValue: Math.abs(trend).toFixed(1),
+        scheduledDischarges: scheduledDischargesCount,
+        dischargeAdjustment: dischargeAdjustment
       });
     }
 
@@ -1491,7 +1697,7 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
             {period === 'today' && (
               <div className="forecast-info">
                 {(() => {
-                  const wardForecasts = calculateWardForecasts();
+                  // Use pre-calculated ward forecasts from state
                   if (!wardForecasts || wardForecasts.length === 0) return null;
 
                   // Filter forecasts based on selected ward
@@ -1554,6 +1760,22 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
                                   </span>
                                 </div>
                               </div>
+                              {forecast.scheduledDischarges > 0 && (
+                                <div style={{ 
+                                  marginTop: '12px', 
+                                  padding: '8px', 
+                                  backgroundColor: 'rgba(16, 185, 129, 0.1)', 
+                                  borderRadius: '6px',
+                                  fontSize: '12px',
+                                  color: '#10b981'
+                                }}>
+                                  <strong>📅 {forecast.scheduledDischarges}</strong> scheduled discharge{forecast.scheduledDischarges > 1 ? 's' : ''} tomorrow
+                                  <br/>
+                                  <span style={{ fontSize: '11px', opacity: 0.8 }}>
+                                    (Impact: {forecast.dischargeAdjustment.toFixed(1)}% reduction)
+                                  </span>
+                                </div>
+                              )}
                             </div>
                           ))}
                         </div>
@@ -2043,8 +2265,8 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
               minHeight={300}
             >
               {/* Period Filter for Bed Requests */}
-              <div className="period-selector">
-              <h3>Bed Requests</h3>
+              <div className="period-selector" style={{ marginBottom: '1rem' }}>
+              <h3 style={{ fontSize: '1rem', marginBottom: '0.5rem' }}>Bed Requests</h3>
               <div className="period-buttons">
                 <button
                   className={`period-btn ${requestsPeriod === 'today' ? 'active' : ''}`}
@@ -2068,49 +2290,54 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
             </div>
 
             {!requestStats && (
-              <div style={{ padding: '2rem', textAlign: 'center' }}>
-                <p>Loading bed requests data...</p>
+              <div style={{ padding: '1rem', textAlign: 'center' }}>
+                <p style={{ margin: 0, fontSize: '0.9rem' }}>Loading bed requests data...</p>
               </div>
             )}
-            {requestStats && (
-              <div className="request-stats-summary">
-                <div className="stat-card stat-total">
-                  <div className="stat-title">Total Requests</div>
-                  <div className="stat-value">{filteredRequestStats.total || 0}</div>
+            {requestStats && filteredRequestStats && (
+              <div className="request-stats-summary" style={{ 
+                display: 'grid', 
+                gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', 
+                gap: '0.75rem',
+                marginBottom: '1rem'
+              }}>
+                <div className="stat-card stat-total" style={{ padding: '0.75rem' }}>
+                  <div className="stat-title" style={{ fontSize: '0.75rem', marginBottom: '0.25rem' }}>Total Requests</div>
+                  <div className="stat-value" style={{ fontSize: '1.5rem' }}>{filteredRequestStats.total || 0}</div>
                 </div>
-                <div className="stat-card stat-pending">
-                  <div className="stat-title">Pending</div>
-                  <div className="stat-value">{filteredRequestStats.pending || 0}</div>
+                <div className="stat-card stat-pending" style={{ padding: '0.75rem' }}>
+                  <div className="stat-title" style={{ fontSize: '0.75rem', marginBottom: '0.25rem' }}>Pending</div>
+                  <div className="stat-value" style={{ fontSize: '1.5rem' }}>{filteredRequestStats.pending || 0}</div>
                 </div>
-                <div className="stat-card stat-approved">
-                  <div className="stat-title">Approved</div>
-                  <div className="stat-value">{filteredRequestStats.approved || 0}</div>
+                <div className="stat-card stat-approved" style={{ padding: '0.75rem' }}>
+                  <div className="stat-title" style={{ fontSize: '0.75rem', marginBottom: '0.25rem' }}>Approved</div>
+                  <div className="stat-value" style={{ fontSize: '1.5rem' }}>{filteredRequestStats.approved || 0}</div>
                 </div>
-                <div className="stat-card stat-denied">
-                  <div className="stat-title">Denied</div>
-                  <div className="stat-value">{filteredRequestStats.denied || 0}</div>
+                <div className="stat-card stat-denied" style={{ padding: '0.75rem' }}>
+                  <div className="stat-title" style={{ fontSize: '0.75rem', marginBottom: '0.25rem' }}>Denied</div>
+                  <div className="stat-value" style={{ fontSize: '1.5rem' }}>{filteredRequestStats.denied || 0}</div>
                 </div>
               </div>
             )}
 
             {/* Pie Chart for Request Statuses */}
-            {requestStats && (
-              <div className="request-status-pie-chart-section">
-                <h3>Request Status Distribution</h3>
+            {requestStats && filteredRequestStats && (
+              <div className="request-status-pie-chart-section" style={{ marginBottom: '1rem' }}>
+                <h3 style={{ fontSize: '0.95rem', marginBottom: '0.5rem' }}>Request Status Distribution</h3>
                 {filteredRequestStats.total > 0 ? (
-                  <ResponsiveContainer width="100%" height={300}>
+                  <ResponsiveContainer width="100%" height={220}>
                     <PieChart>
                       <Pie
                         data={[
                           { name: 'Pending', value: filteredRequestStats.pending || 0, color: '#f59e0b' },
                           { name: 'Approved', value: filteredRequestStats.approved || 0, color: '#10b981' },
                           { name: 'Denied', value: filteredRequestStats.denied || 0, color: '#ef4444' }
-                        ]}
+                        ].filter(item => item.value > 0)} // Filter out zero values
                         cx="50%"
                         cy="50%"
                         labelLine={false}
                         label={({ name, value, percent }) => `${name}: ${value} (${(percent * 100).toFixed(0)}%)`}
-                        outerRadius={80}
+                        outerRadius={65}
                         fill="#8884d8"
                         dataKey="value"
                       >
@@ -2118,7 +2345,7 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
                           { name: 'Pending', value: filteredRequestStats.pending || 0, color: '#f59e0b' },
                           { name: 'Approved', value: filteredRequestStats.approved || 0, color: '#10b981' },
                           { name: 'Denied', value: filteredRequestStats.denied || 0, color: '#ef4444' }
-                        ].map((entry, index) => (
+                        ].filter(item => item.value > 0).map((entry, index) => (
                           <Cell key={`cell-${index}`} fill={entry.color} />
                         ))}
                       </Pie>
@@ -2140,82 +2367,235 @@ function AdminDashboard({ currentUser, onLogout, theme, onToggleTheme, socket })
                     </PieChart>
                   </ResponsiveContainer>
                 ) : (
-                  <div style={{ padding: '2rem', textAlign: 'center' }}>
-                    <p>No bed requests found for the selected period.</p>
+                  <div style={{ padding: '1rem', textAlign: 'center' }}>
+                    <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--text-quiet)' }}>No bed requests found for the selected period.</p>
                   </div>
                 )}
               </div>
             )}
 
-            {filteredBedRequests.length === 0 && requestStats && filteredRequestStats.total > 0 && (
-              <div style={{ padding: '2rem', textAlign: 'center' }}>
-                <p>No bed requests found for the selected period.</p>
+            {/* Show message only when stats are loaded but no requests match filters */}
+            {requestStats && filteredRequestStats && filteredBedRequests.length === 0 && filteredRequestStats.total === 0 && (
+              <div style={{ padding: '1rem', textAlign: 'center' }}>
+                <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--text-quiet)' }}>No bed requests found for the selected period{selectedWard !== 'All' ? ` in ${selectedWard}` : ''}.</p>
               </div>
             )}
 
             {filteredBedRequests.length > 0 && (
-              <div className="recent-requests">
-                <h3>
+              <div className="recent-requests" style={{ marginBottom: '1rem' }}>
+                <h3 style={{ fontSize: '0.95rem', marginBottom: '0.75rem' }}>
                   Bed Requests
                   ({requestsPeriod === 'today' ? 'Today' : requestsPeriod === '7d' ? 'Last 7 Days' : 'Last 30 Days'})
                   {selectedWard !== 'All' && ` - ${selectedWard}`}
                 </h3>
                 <div className="requests-table-container">
-                  <table className="requests-table">
+                  <table className="requests-table" style={{ fontSize: '0.85rem' }}>
                     <thead>
-                      <tr>
-                        <th>Request ID</th>
-                        <th>Patient</th>
-                        <th>Triage</th>
-                        <th>Ward</th>
-                        <th>Status</th>
-                        <th>Created</th>
-                        <th>Created By</th>
+                      <tr style={{ height: '2.5rem' }}>
+                        <th style={{ padding: '0.5rem 0.75rem' }}>Request ID</th>
+                        <th style={{ padding: '0.5rem 0.75rem' }}>Patient</th>
+                        <th style={{ padding: '0.5rem 0.75rem' }}>Preferred Ward</th>
+                        <th style={{ padding: '0.5rem 0.75rem' }}>Status</th>
+                        <th style={{ padding: '0.5rem 0.75rem' }}>Created</th>
+                        <th style={{ padding: '0.5rem 0.75rem' }}>Created By</th>
                       </tr>
                     </thead>
                     <tbody>
                       {filteredBedRequests
                         .slice(0, 100)
-                        .map((request) => (
-                        <tr key={request._id}>
-                          <td>{request.requestId}</td>
-                          <td>{request.patientDetails.name}</td>
-                          <td>
-                            <span className={`triage-badge triage-${request.patientDetails.triageLevel.toLowerCase()}`}>
-                              {request.patientDetails.triageLevel}
-                            </span>
-                          </td>
-                          <td>{request.preferredWard || 'Any'}</td>
-                          <td>
-                            <span className={`status-badge status-${request.status}`}>
-                              {request.status}
-                            </span>
-                          </td>
-                          <td>{formatDateTime(request.createdAt)}</td>
-                          <td>{request.createdBy.name}</td>
-                        </tr>
-                      ))}
+                        .map((request) => {
+                          // Safety checks for nested properties
+                          const patientName = request?.patientDetails?.name || 'Unknown Patient';
+                          const createdByName = request?.createdBy?.name || 'Unknown';
+                          
+                          return (
+                            <tr key={request._id} style={{ height: '2.5rem' }}>
+                              <td style={{ padding: '0.5rem 0.75rem' }}>{request.requestId || 'N/A'}</td>
+                              <td style={{ padding: '0.5rem 0.75rem' }}>{patientName}</td>
+                              <td style={{ padding: '0.5rem 0.75rem' }}>{request.preferredWard || 'Any'}</td>
+                              <td style={{ padding: '0.5rem 0.75rem' }}>
+                                <span className={`status-badge status-${request.status || 'unknown'}`} style={{ 
+                                  padding: '0.25rem 0.5rem', 
+                                  fontSize: '0.75rem',
+                                  borderRadius: '4px'
+                                }}>
+                                  {request.status || 'Unknown'}
+                                </span>
+                              </td>
+                              <td style={{ padding: '0.5rem 0.75rem' }}>{formatDateTime(request.createdAt)}</td>
+                              <td style={{ padding: '0.5rem 0.75rem' }}>{createdByName}</td>
+                            </tr>
+                          );
+                        })}
                     </tbody>
                   </table>
                 </div>
               </div>
             )}
 
-            {filteredRequestStats.triageStats && filteredRequestStats.triageStats.length > 0 && (
-              <div className="triage-breakdown">
-                <h3>Requests by Triage Level</h3>
-                <div className="triage-stats-grid">
-                  {filteredRequestStats.triageStats.map((triage) => (
-                    <div key={triage._id} className="triage-stat-card">
-                      <div className={`triage-badge triage-${triage._id.toLowerCase()}`}>
-                        {triage._id}
+            {/* Ward Transfer Requests Section */}
+            {(() => {
+              // Filter ward transfers based on period and selected ward
+              const now = new Date();
+              let startDate = new Date();
+              
+              if (requestsPeriod === 'today') {
+                startDate.setHours(0, 0, 0, 0);
+              } else if (requestsPeriod === '7d') {
+                startDate.setDate(now.getDate() - 7);
+              } else if (requestsPeriod === '30d') {
+                startDate.setDate(now.getDate() - 30);
+              }
+
+              const filteredTransfers = wardTransfers.filter(transfer => {
+                const transferDate = new Date(transfer.requestedAt || transfer.createdAt);
+                const matchesPeriod = transferDate >= startDate;
+                const matchesWard = selectedWard === 'All' || 
+                                   transfer.fromWard === selectedWard || 
+                                   transfer.toWard === selectedWard;
+                return matchesPeriod && matchesWard;
+              });
+
+              // Calculate transfer stats by status
+              const transferStats = {
+                total: filteredTransfers.length,
+                pending: filteredTransfers.filter(t => t.status === 'pending').length,
+                approved: filteredTransfers.filter(t => t.status === 'approved').length,
+                completed: filteredTransfers.filter(t => t.status === 'completed').length,
+                rejected: filteredTransfers.filter(t => t.status === 'rejected').length,
+                cancelled: filteredTransfers.filter(t => t.status === 'cancelled').length
+              };
+
+              if (filteredTransfers.length === 0) {
+                return (
+                  <div style={{ padding: '0.75rem 0', textAlign: 'center', color: 'var(--text-quiet)' }}>
+                    <p style={{ margin: 0, fontSize: '0.85rem' }}>No ward transfer requests for the selected period{selectedWard !== 'All' ? ` involving ${selectedWard}` : ''}.</p>
+                  </div>
+                );
+              }
+
+              return (
+                <>
+                  {/* Ward Transfer Stats Summary */}
+                  <div className="ward-transfer-section" style={{ marginTop: '1.5rem' }}>
+                    <h3 style={{ fontSize: '0.95rem', marginBottom: '0.75rem' }}>Ward Transfer Requests</h3>
+                    <div className="request-stats-summary" style={{ 
+                      display: 'grid', 
+                      gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', 
+                      gap: '0.75rem',
+                      marginBottom: '0.75rem'
+                    }}>
+                      <div className="stat-card stat-total" style={{ padding: '0.75rem' }}>
+                        <div className="stat-title" style={{ fontSize: '0.75rem', marginBottom: '0.25rem' }}>Total Transfers</div>
+                        <div className="stat-value" style={{ fontSize: '1.5rem' }}>{transferStats.total}</div>
                       </div>
-                      <div className="triage-count">{triage.count}</div>
+                      <div className="stat-card stat-pending" style={{ padding: '0.75rem' }}>
+                        <div className="stat-title" style={{ fontSize: '0.75rem', marginBottom: '0.25rem' }}>Pending</div>
+                        <div className="stat-value" style={{ fontSize: '1.5rem' }}>{transferStats.pending}</div>
+                      </div>
+                      <div className="stat-card stat-approved" style={{ padding: '0.75rem' }}>
+                        <div className="stat-title" style={{ fontSize: '0.75rem', marginBottom: '0.25rem' }}>Approved</div>
+                        <div className="stat-value" style={{ fontSize: '1.5rem' }}>{transferStats.approved}</div>
+                      </div>
+                      <div className="stat-card" style={{ background: 'linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%)', padding: '0.75rem' }}>
+                        <div className="stat-title" style={{ fontSize: '0.75rem', marginBottom: '0.25rem' }}>Completed</div>
+                        <div className="stat-value" style={{ fontSize: '1.5rem' }}>{transferStats.completed}</div>
+                      </div>
                     </div>
-                  ))}
-                </div>
-              </div>
-            )}
+
+                    {/* Transfer Flow Visualization */}
+                    {transferStats.total > 0 && (
+                      <div style={{ marginBottom: '1rem' }}>
+                        <h4 style={{ fontSize: '0.85rem', marginBottom: '0.5rem', color: 'var(--text-primary)' }}>Transfer Flow</h4>
+                        <ResponsiveContainer width="100%" height={180}>
+                          <PieChart>
+                            <Pie
+                              data={[
+                                { name: 'Pending', value: transferStats.pending, color: '#f59e0b' },
+                                { name: 'Approved', value: transferStats.approved, color: '#10b981' },
+                                { name: 'Completed', value: transferStats.completed, color: '#8b5cf6' },
+                                { name: 'Rejected', value: transferStats.rejected, color: '#ef4444' }
+                              ].filter(item => item.value > 0)}
+                              cx="50%"
+                              cy="50%"
+                              labelLine={false}
+                              label={({ name, value, percent }) => `${name}: ${value} (${(percent * 100).toFixed(0)}%)`}
+                              outerRadius={55}
+                              dataKey="value"
+                            >
+                              {[
+                                { name: 'Pending', value: transferStats.pending, color: '#f59e0b' },
+                                { name: 'Approved', value: transferStats.approved, color: '#10b981' },
+                                { name: 'Completed', value: transferStats.completed, color: '#8b5cf6' },
+                                { name: 'Rejected', value: transferStats.rejected, color: '#ef4444' }
+                              ].filter(item => item.value > 0).map((entry, index) => (
+                                <Cell key={`cell-${index}`} fill={entry.color} />
+                              ))}
+                            </Pie>
+                            <Tooltip
+                              contentStyle={{
+                                backgroundColor: theme === 'dark' ? '#1e293b' : '#ffffff',
+                                border: `1px solid ${theme === 'dark' ? '#475569' : '#e2e8f0'}`,
+                                borderRadius: '8px',
+                                padding: '8px 12px'
+                              }}
+                            />
+                            <Legend />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      </div>
+                    )}
+
+                    {/* Ward Transfer Table */}
+                    <div className="requests-table-container">
+                      <table className="requests-table" style={{ fontSize: '0.85rem' }}>
+                        <thead>
+                          <tr style={{ height: '2.5rem' }}>
+                            <th style={{ padding: '0.5rem 0.75rem' }}>Transfer ID</th>
+                            <th style={{ padding: '0.5rem 0.75rem' }}>Patient</th>
+                            <th style={{ padding: '0.5rem 0.75rem' }}>From Ward</th>
+                            <th style={{ padding: '0.5rem 0.75rem' }}>To Ward</th>
+                            <th style={{ padding: '0.5rem 0.75rem' }}>Status</th>
+                            <th style={{ padding: '0.5rem 0.75rem' }}>Requested</th>
+                            <th style={{ padding: '0.5rem 0.75rem' }}>Requested By</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {filteredTransfers.slice(0, 50).map((transfer) => {
+                            const patientName = transfer?.patientId?.name || 'Unknown Patient';
+                            const requestedByName = transfer?.requestedBy?.name || 'Unknown';
+                            
+                            return (
+                              <tr key={transfer._id} style={{ height: '2.5rem' }}>
+                                <td style={{ padding: '0.5rem 0.75rem' }}>{transfer.transferId || 'N/A'}</td>
+                                <td style={{ padding: '0.5rem 0.75rem' }}>{patientName}</td>
+                                <td style={{ padding: '0.5rem 0.75rem' }}>{transfer.fromWard || 'N/A'}</td>
+                                <td style={{ padding: '0.5rem 0.75rem' }}>
+                                  <span style={{ fontWeight: 600, color: '#10b981', fontSize: '0.85rem' }}>
+                                    {transfer.toWard || 'N/A'}
+                                  </span>
+                                </td>
+                                <td style={{ padding: '0.5rem 0.75rem' }}>
+                                  <span className={`status-badge status-${transfer.status || 'unknown'}`} style={{ 
+                                    padding: '0.25rem 0.5rem', 
+                                    fontSize: '0.75rem',
+                                    borderRadius: '4px'
+                                  }}>
+                                    {transfer.status || 'Unknown'}
+                                  </span>
+                                </td>
+                                <td style={{ padding: '0.5rem 0.75rem' }}>{formatDateTime(transfer.requestedAt || transfer.createdAt)}</td>
+                                <td style={{ padding: '0.5rem 0.75rem' }}>{requestedByName}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </>
+              );
+            })()}
             </ResizableCard>
           </div>
         )}

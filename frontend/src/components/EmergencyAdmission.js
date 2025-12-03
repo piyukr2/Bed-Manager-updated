@@ -34,6 +34,14 @@ function EmergencyAdmission({
 
   const [reserveBed, setReserveBed] = useState(false);
   const [selectedBedId, setSelectedBedId] = useState('');
+  const [notification, setNotification] = useState({ show: false, message: '', type: 'error' });
+
+  const showNotification = (type, message) => {
+    setNotification({ show: true, message, type });
+    setTimeout(() => {
+      setNotification({ show: false, message: '', type: 'error' });
+    }, 5000);
+  };
 
   const handleChange = (field, value) => {
     setNewRequest(prev => ({
@@ -48,7 +56,7 @@ function EmergencyAdmission({
   const handleSubmit = (e) => {
     e.preventDefault();
     if (reserveBed && !selectedBedId) {
-      alert('Select a bed to reserve or turn off reservation.');
+      showNotification('error', 'Select a bed to reserve or turn off reservation.');
       return;
     }
     
@@ -315,6 +323,24 @@ function EmergencyAdmission({
           </div>
         </form>
       </div>
+
+      {/* Notification Toast */}
+      {notification.show && (
+        <div style={{
+          position: 'fixed',
+          top: '20px',
+          right: '20px',
+          backgroundColor: notification.type === 'success' ? '#4CAF50' : '#f44336',
+          color: 'white',
+          padding: '16px',
+          borderRadius: '4px',
+          boxShadow: '0 2px 5px rgba(0,0,0,0.2)',
+          zIndex: 9999,
+          minWidth: '300px'
+        }}>
+          {notification.message}
+        </div>
+      )}
     </div>
   );
 }

@@ -16,7 +16,7 @@ function WardStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socke
   const [selectedWard, setSelectedWard] = useState('All'); // Default to 'All' for ward staff
   const [selectedStatus, setSelectedStatus] = useState('all'); // Filter by bed status: 'all', 'available', 'occupied', 'cleaning', 'reserved', 'maintenance'
   const [searchQuery, setSearchQuery] = useState(''); // Search by bed number, patient name, location, equipment
-  
+
   // Ward Transfer states
   const [showTransferModal, setShowTransferModal] = useState(false);
   const [transferDetails, setTransferDetails] = useState({
@@ -30,15 +30,15 @@ function WardStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socke
   const [pendingTransfers, setPendingTransfers] = useState([]);
   const [showTransferStatusModal, setShowTransferStatusModal] = useState(false);
   const [transferStatusData, setTransferStatusData] = useState(null);
-  
+
   // Notification states
   const [notification, setNotification] = useState({ show: false, type: '', message: '' });
   const [validationError, setValidationError] = useState('');
-  
+
   // Discharge Date Editing states
   const [editingDischargeDate, setEditingDischargeDate] = useState(null);
   const [newDischargeDate, setNewDischargeDate] = useState('');
-  
+
   // Confirmation modal states
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [confirmModalData] = useState({ title: '', message: '', onConfirm: null });
@@ -47,21 +47,21 @@ function WardStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socke
   const playNotificationSound = () => {
     try {
       const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-      
+
       const playTone = (frequency, startTime, duration) => {
         const oscillator = audioContext.createOscillator();
         const gainNode = audioContext.createGain();
-        
+
         oscillator.connect(gainNode);
         gainNode.connect(audioContext.destination);
-        
+
         oscillator.frequency.value = frequency;
         oscillator.type = 'sine';
-        
+
         gainNode.gain.setValueAtTime(0, startTime);
         gainNode.gain.linearRampToValueAtTime(0.3, startTime + 0.01);
         gainNode.gain.exponentialRampToValueAtTime(0.01, startTime + duration);
-        
+
         oscillator.start(startTime);
         oscillator.stop(startTime + duration);
       };
@@ -86,7 +86,7 @@ function WardStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socke
     try {
       // Build query params based on selected ward
       const wardParam = selectedWard === 'All' ? '' : `?ward=${selectedWard}`;
-      
+
       const [bedsRes, statsRes] = await Promise.all([
         axios.get(`${API_URL}/beds${wardParam}`),
         axios.get(`${API_URL}/beds/stats`)
@@ -228,10 +228,10 @@ function WardStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socke
     try {
       // Discharge the patient
       await axios.delete(`${API_URL}/patients/${bedToDischarge.bed.patientId._id}`);
-      
+
       // Mark bed as cleaning
       await axios.put(`${API_URL}/beds/${bedToDischarge.bedId}`, { status: 'cleaning' });
-      
+
       setShowDischargeModal(false);
       setBedToDischarge(null);
       showNotification('success', '✓ Patient discharged successfully. Bed marked for cleaning.');
@@ -269,7 +269,7 @@ function WardStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socke
       const bedsRes = await axios.get(`${API_URL}/beds`);
       const wards = [...new Set(bedsRes.data.map(b => b.ward))].filter(ward => ward !== 'Emergency');
       setAvailableWards(wards);
-      
+
       setTransferDetails({
         bedId: bed._id,
         patientId: bed.patientId._id,
@@ -382,15 +382,66 @@ function WardStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socke
 
   const occupyReservedBed = async (bedId) => {
     try {
-      await axios.put(`${API_URL}/beds/${bedId}`, {
-        status: 'occupied'
-      });
+      // First, find the bed
+      const bed = beds.find(b => b._id === bedId);
+      if (!bed) {
+        showNotification('error', 'Bed not found');
+        return;
+      }
 
-      showNotification('success', '✓ Bed occupied! The reserved bed is now marked as occupied.');
+      // Check if bed has the stored request ID (new method)
+      if (bed.reservedForRequestId) {
+        // Use the stored request ID directly - most reliable method
+        await axios.post(`${API_URL}/bed-requests/${bed.reservedForRequestId}/fulfill`);
+        showNotification('success', '✓ Patient admitted successfully! Bed is now occupied.');
+        fetchData();
+        return;
+      }
+
+      // Fallback: Try to extract from notes (for old reservations)
+      if (!bed.notes) {
+        showNotification('error', 'Cannot find associated bed request for this reservation');
+        return;
+      }
+
+      // Extract request ID from bed notes (format: "Reserved for request REQ-000001")
+      const requestIdMatch = bed.notes.match(/REQ-\d+/);
+      if (!requestIdMatch) {
+        showNotification('error', 'Cannot find request ID in bed notes');
+        return;
+      }
+
+      const requestId = requestIdMatch[0];
+
+      // Get the bed request to find its database ID
+      const requestsResponse = await axios.get(`${API_URL}/bed-requests?status=approved`);
+      const bedRequest = requestsResponse.data.find(req => req.requestId === requestId);
+
+      if (!bedRequest) {
+        // Try to find request with any status for better error message
+        try {
+          const allRequestsResponse = await axios.get(`${API_URL}/bed-requests`);
+          const anyRequest = allRequestsResponse.data.find(req => req.requestId === requestId);
+
+          if (anyRequest) {
+            showNotification('error', `Bed request ${requestId} has status: ${anyRequest.status}. Only approved requests can be fulfilled.`);
+          } else {
+            showNotification('error', `Bed request ${requestId} not found in the system. It may have been deleted or expired.`);
+          }
+        } catch (err) {
+          showNotification('error', `Bed request ${requestId} not found or not approved`);
+        }
+        return;
+      }
+
+      // Call the fulfill endpoint to create patient and occupy bed
+      await axios.post(`${API_URL}/bed-requests/${bedRequest._id}/fulfill`);
+
+      showNotification('success', '✓ Patient admitted successfully! Bed is now occupied.');
       fetchData();
     } catch (error) {
       console.error('Error occupying reserved bed:', error);
-      showNotification('error', error.response?.data?.error || 'Failed to occupy bed');
+      showNotification('error', error.response?.data?.error || 'Failed to admit patient and occupy bed');
     }
   };
 
@@ -435,7 +486,7 @@ function WardStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socke
   const filteredStats = getFilteredStats();
 
   const hasPendingTransfer = (bedId, patientId) => {
-    return pendingTransfers.some(transfer => 
+    return pendingTransfers.some(transfer =>
       (transfer.bedId === bedId || transfer.bedId?._id === bedId) &&
       (transfer.patientId === patientId || transfer.patientId?._id === patientId) &&
       transfer.status === 'pending'
@@ -487,25 +538,25 @@ function WardStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socke
   // Filter beds by search query
   const filterBedsBySearch = (bed) => {
     if (!searchQuery.trim()) return true;
-    
+
     const query = searchQuery.toLowerCase().trim();
-    
+
     // Search by bed number
     if (bed.bedNumber.toLowerCase().includes(query)) return true;
-    
+
     // Search by patient name
     if (bed.patientId?.name?.toLowerCase().includes(query)) return true;
-    
+
     // Search by location (floor, section, room)
     const location = `floor ${bed.location.floor} ${bed.location.section} room ${bed.location.roomNumber}`.toLowerCase();
     if (location.includes(query)) return true;
-    
+
     // Search by equipment type
     if (bed.equipmentType.toLowerCase().includes(query)) return true;
-    
+
     // Search by ward
     if (bed.ward.toLowerCase().includes(query)) return true;
-    
+
     return false;
   };
 
@@ -588,7 +639,7 @@ function WardStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socke
                   ))}
                 </div>
               </div>
-              
+
               <div className="search-group">
                 <label>Search Beds:</label>
                 <div className="search-input-wrapper">
@@ -600,7 +651,7 @@ function WardStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socke
                     onChange={(e) => setSearchQuery(e.target.value)}
                   />
                   {searchQuery && (
-                    <button 
+                    <button
                       className="clear-search-btn"
                       onClick={() => setSearchQuery('')}
                       title="Clear search"
@@ -622,51 +673,51 @@ function WardStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socke
             minHeight={120}
           >
             <div className="stats-summary ward-stats">
-            <div 
-              className={`stat-card stat-total ${selectedStatus === 'all' ? 'active' : ''}`}
-              onClick={() => setSelectedStatus('all')}
-              style={{ cursor: 'pointer' }}
-            >
-              <div className="stat-title">Total Beds</div>
-              <div className="stat-value">{filteredStats.totalBeds || 0}</div>
-              <div className="stat-description">{selectedWard === 'All' ? 'All wards' : `In ${selectedWard}`}</div>
-            </div>
-            <div 
-              className={`stat-card stat-available ${selectedStatus === 'available' ? 'active' : ''}`}
-              onClick={() => setSelectedStatus('available')}
-              style={{ cursor: 'pointer' }}
-            >
-              <div className="stat-title">Available</div>
-              <div className="stat-value">{filteredStats.available || 0}</div>
-              <div className="stat-description">Ready for admission</div>
-            </div>
-            <div 
-              className={`stat-card stat-occupied ${selectedStatus === 'occupied' ? 'active' : ''}`}
-              onClick={() => setSelectedStatus('occupied')}
-              style={{ cursor: 'pointer' }}
-            >
-              <div className="stat-title">Occupied</div>
-              <div className="stat-value">{filteredStats.occupied || 0}</div>
-              <div className="stat-description">With patients</div>
-            </div>
-            <div 
-              className={`stat-card stat-cleaning ${selectedStatus === 'cleaning' ? 'active' : ''}`}
-              onClick={() => setSelectedStatus('cleaning')}
-              style={{ cursor: 'pointer' }}
-            >
-              <div className="stat-title">Cleaning</div>
-              <div className="stat-value">{filteredStats.cleaning || 0}</div>
-              <div className="stat-description">Being serviced</div>
-            </div>
-            <div 
-              className={`stat-card stat-reserved ${selectedStatus === 'reserved' ? 'active' : ''}`}
-              onClick={() => setSelectedStatus('reserved')}
-              style={{ cursor: 'pointer' }}
-            >
-              <div className="stat-title">Reserved</div>
-              <div className="stat-value">{filteredStats.reserved || 0}</div>
-              <div className="stat-description">Incoming patients</div>
-            </div>
+              <div
+                className={`stat-card stat-total ${selectedStatus === 'all' ? 'active' : ''}`}
+                onClick={() => setSelectedStatus('all')}
+                style={{ cursor: 'pointer' }}
+              >
+                <div className="stat-title">Total Beds</div>
+                <div className="stat-value">{filteredStats.totalBeds || 0}</div>
+                <div className="stat-description">{selectedWard === 'All' ? 'All wards' : `In ${selectedWard}`}</div>
+              </div>
+              <div
+                className={`stat-card stat-available ${selectedStatus === 'available' ? 'active' : ''}`}
+                onClick={() => setSelectedStatus('available')}
+                style={{ cursor: 'pointer' }}
+              >
+                <div className="stat-title">Available</div>
+                <div className="stat-value">{filteredStats.available || 0}</div>
+                <div className="stat-description">Ready for admission</div>
+              </div>
+              <div
+                className={`stat-card stat-occupied ${selectedStatus === 'occupied' ? 'active' : ''}`}
+                onClick={() => setSelectedStatus('occupied')}
+                style={{ cursor: 'pointer' }}
+              >
+                <div className="stat-title">Occupied</div>
+                <div className="stat-value">{filteredStats.occupied || 0}</div>
+                <div className="stat-description">With patients</div>
+              </div>
+              <div
+                className={`stat-card stat-cleaning ${selectedStatus === 'cleaning' ? 'active' : ''}`}
+                onClick={() => setSelectedStatus('cleaning')}
+                style={{ cursor: 'pointer' }}
+              >
+                <div className="stat-title">Cleaning</div>
+                <div className="stat-value">{filteredStats.cleaning || 0}</div>
+                <div className="stat-description">Being serviced</div>
+              </div>
+              <div
+                className={`stat-card stat-reserved ${selectedStatus === 'reserved' ? 'active' : ''}`}
+                onClick={() => setSelectedStatus('reserved')}
+                style={{ cursor: 'pointer' }}
+              >
+                <div className="stat-title">Reserved</div>
+                <div className="stat-value">{filteredStats.reserved || 0}</div>
+                <div className="stat-description">Incoming patients</div>
+              </div>
             </div>
           </ResizableCard>
         )}
@@ -678,32 +729,32 @@ function WardStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socke
             minHeight={200}
           >
             <div className="reservations-section">
-                <div className="section-header">
-                  <h2>Incoming Reservations</h2>
-                  <span className="badge">{reservedBeds.filter(bed => selectedWard === 'All' || bed.ward === selectedWard).length}</span>
-                </div>
-                <div className="reservations-list">
-                  {reservedBeds.filter(bed => selectedWard === 'All' || bed.ward === selectedWard).map((bed) => (
-                    <div key={bed._id} className="reservation-card">
-                      <div className="reservation-info">
-                        <h3>{bed.bedNumber}</h3>
-                        <p className="bed-location">
-                          Floor {bed.location.floor}, Section {bed.location.section}, Room {bed.location.roomNumber}
-                        </p>
-                        <p className="bed-equipment">Equipment: {bed.equipmentType}</p>
-                        {bed.notes && <p className="bed-notes">{bed.notes}</p>}
-                      </div>
-                      <div className="reservation-actions">
-                        <button
-                          className="btn-acknowledge"
-                          onClick={() => occupyReservedBed(bed._id)}
-                        >
-                          Occupy Bed
-                        </button>
-                      </div>
+              <div className="section-header">
+                <h2>Incoming Reservations</h2>
+                <span className="badge">{reservedBeds.filter(bed => selectedWard === 'All' || bed.ward === selectedWard).length}</span>
+              </div>
+              <div className="reservations-list">
+                {reservedBeds.filter(bed => selectedWard === 'All' || bed.ward === selectedWard).map((bed) => (
+                  <div key={bed._id} className="reservation-card">
+                    <div className="reservation-info">
+                      <h3>{bed.bedNumber}</h3>
+                      <p className="bed-location">
+                        Floor {bed.location.floor}, Section {bed.location.section}, Room {bed.location.roomNumber}
+                      </p>
+                      <p className="bed-equipment">Equipment: {bed.equipmentType}</p>
+                      {bed.notes && <p className="bed-notes">{bed.notes}</p>}
                     </div>
-                  ))}
-                </div>
+                    <div className="reservation-actions">
+                      <button
+                        className="btn-acknowledge"
+                        onClick={() => occupyReservedBed(bed._id)}
+                      >
+                        Occupy Bed
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </ResizableCard>
         )}
@@ -714,26 +765,26 @@ function WardStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socke
           minHeight={400}
         >
           <div className="bed-board-section">
-              <div className="section-header">
-                <h2>Bed Status Board</h2>
-                <p>
-                  {selectedStatus === 'all' 
-                    ? `All beds in ${selectedWard === 'All' ? 'all wards' : selectedWard}`
-                    : `${selectedStatus.charAt(0).toUpperCase() + selectedStatus.slice(1)} beds in ${selectedWard === 'All' ? 'all wards' : selectedWard}`
-                  }
-                  {searchQuery && <span> matching "{searchQuery}"</span>}
-                </p>
-              </div>
+            <div className="section-header">
+              <h2>Bed Status Board</h2>
+              <p>
+                {selectedStatus === 'all'
+                  ? `All beds in ${selectedWard === 'All' ? 'all wards' : selectedWard}`
+                  : `${selectedStatus.charAt(0).toUpperCase() + selectedStatus.slice(1)} beds in ${selectedWard === 'All' ? 'all wards' : selectedWard}`
+                }
+                {searchQuery && <span> matching "{searchQuery}"</span>}
+              </p>
+            </div>
 
-              {beds
-                .filter(bed => selectedWard === 'All' || bed.ward === selectedWard)
-                .filter(bed => selectedStatus === 'all' || bed.status === selectedStatus)
-                .filter(bed => filterBedsBySearch(bed))
-                .length === 0 ? (
-                <div className="empty-state-small">
-                  <p>No beds found for the selected filters{searchQuery ? ` matching "${searchQuery}"` : ''}.</p>
-                </div>
-              ) : (
+            {beds
+              .filter(bed => selectedWard === 'All' || bed.ward === selectedWard)
+              .filter(bed => selectedStatus === 'all' || bed.status === selectedStatus)
+              .filter(bed => filterBedsBySearch(bed))
+              .length === 0 ? (
+              <div className="empty-state-small">
+                <p>No beds found for the selected filters{searchQuery ? ` matching "${searchQuery}"` : ''}.</p>
+              </div>
+            ) : (
               <div className="bed-board-grid">
                 {beds
                   .filter(bed => selectedWard === 'All' || bed.ward === selectedWard)
@@ -745,202 +796,202 @@ function WardStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socke
                     return (statusPriority[a.status] || 999) - (statusPriority[b.status] || 999);
                   })
                   .map((bed) => (
-                  <div key={bed._id} className="bed-card-compact">
-                    <div className="bed-card-header" style={{ borderLeftColor: getStatusColor(bed.status) }}>
-                      <h3>{bed.bedNumber}</h3>
-                      <div className="bed-status-badges">
-                        <span className="bed-ward-badge">{bed.ward}</span>
-                        <span className={`bed-status-badge status-${bed.status}`}>
-                          {bed.status}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="bed-card-body">
-                      <div className="bed-detail-row">
-                        <span className="detail-label">Location:</span>
-                        <span className="detail-value">
-                          Floor {bed.location.floor}, {bed.location.section}-{bed.location.roomNumber}
-                        </span>
-                      </div>
-
-                      <div className="bed-detail-row">
-                        <span className="detail-label">Equipment:</span>
-                        <span className="detail-value">{bed.equipmentType}</span>
-                      </div>
-
-                      {bed.patientId && (
-                        <>
-                          <div className="bed-detail-row">
-                            <span className="detail-label">Patient:</span>
-                            <span className="detail-value patient-name">{bed.patientId.name}</span>
-                          </div>
-                          <div className="bed-detail-row">
-                            <span className="detail-label">Admitted:</span>
-                            <span className="detail-value">
-                              {formatDateTime(bed.patientId.admissionDate)}
-                            </span>
-                          </div>
-                          <div className="bed-detail-row" style={{ 
-                            flexDirection: editingDischargeDate === bed.patientId._id ? 'column' : 'row',
-                            alignItems: editingDischargeDate === bed.patientId._id ? 'stretch' : 'flex-start'
-                          }}>
-                            <span className="detail-label">Expected Discharge:</span>
-                            {editingDischargeDate === bed.patientId._id ? (
-                              <div className="discharge-edit-container" style={{
-                                backgroundColor: 'var(--surface-panel)',
-                                padding: '12px',
-                                borderRadius: '8px',
-                                border: '1px solid var(--border-emphasis)',
-                                marginTop: '6px',
-                                boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
-                                maxWidth: '100%'
-                              }}>
-                                <input
-                                  type="datetime-local"
-                                  value={newDischargeDate}
-                                  min={(() => {
-                                    const now = new Date();
-                                    return now.toISOString().slice(0, 16);
-                                  })()}
-                                  onChange={(e) => {
-                                    const selectedDate = new Date(e.target.value);
-                                    const now = new Date();
-                                    
-                                    // If selected date/time is in the past, set to current time
-                                    if (selectedDate < now) {
-                                      setNewDischargeDate(now.toISOString().slice(0, 16));
-                                      showNotification('error', 'Cannot select past date/time. Set to current time.');
-                                    } else {
-                                      setNewDischargeDate(e.target.value);
-                                    }
-                                  }}
-                                  className="discharge-date-input"
-                                  style={{
-                                    width: '100%',
-                                    padding: '8px 10px',
-                                    fontSize: '0.9rem',
-                                    backgroundColor: 'var(--surface-card)',
-                                    color: 'var(--text-primary)',
-                                    border: '1px solid var(--border-soft)',
-                                    borderRadius: '6px',
-                                    boxSizing: 'border-box'
-                                  }}
-                                />
-                                <div className="discharge-edit-actions" style={{
-                                  marginTop: '8px'
-                                }}>
-                                  <button
-                                    className="btn-save-discharge"
-                                    onClick={() => saveDischargeDate(bed.patientId._id)}
-                                  >
-                                    ✓
-                                  </button>
-                                  <button
-                                    className="btn-cancel-discharge"
-                                    onClick={cancelEditDischargeDate}
-                                  >
-                                    ✕
-                                  </button>
-                                </div>
-                              </div>
-                            ) : (
-                              <span className="detail-value discharge-date-display">
-                                {formatDateTime(bed.patientId.expectedDischarge) || 'Not set'}
-                                <button
-                                  className="btn-edit-discharge"
-                                  onClick={() => handleEditDischargeDate(bed.patientId._id, bed.patientId.expectedDischarge)}
-                                  title="Edit discharge date"
-                                >
-                                  ✏️
-                                </button>
-                              </span>
-                            )}
-                          </div>
-                        </>
-                      )}
-
-                      {bed.lastCleaned && bed.status === 'available' && (
-                        <div className="bed-detail-row">
-                          <span className="detail-label">Last Cleaned:</span>
-                          <span className="detail-value">
-                            {formatDateTime(bed.lastCleaned)}
+                    <div key={bed._id} className="bed-card-compact">
+                      <div className="bed-card-header" style={{ borderLeftColor: getStatusColor(bed.status) }}>
+                        <h3>{bed.bedNumber}</h3>
+                        <div className="bed-status-badges">
+                          <span className="bed-ward-badge">{bed.ward}</span>
+                          <span className={`bed-status-badge status-${bed.status}`}>
+                            {bed.status}
                           </span>
                         </div>
-                      )}
+                      </div>
 
-                      {bed.notes && (
-                        <div className="bed-notes-compact">
-                          <small>{bed.notes}</small>
+                      <div className="bed-card-body">
+                        <div className="bed-detail-row">
+                          <span className="detail-label">Location:</span>
+                          <span className="detail-value">
+                            Floor {bed.location.floor}, {bed.location.section}-{bed.location.roomNumber}
+                          </span>
                         </div>
-                      )}
-                    </div>
 
-                    <div className="bed-card-actions">
-                      {getBedActions(bed).length > 0 ? (
-                        <>
-                          {getBedActions(bed).map((action, idx) => (
-                            <button
-                              key={idx}
-                              className="btn-action"
-                              style={{ backgroundColor: action.color }}
-                              onClick={() => handleBedStatusChange(bed._id, action.status, bed)}
-                              disabled={loading}
-                            >
-                              {action.label}
-                            </button>
-                          ))}
+                        <div className="bed-detail-row">
+                          <span className="detail-label">Equipment:</span>
+                          <span className="detail-value">{bed.equipmentType}</span>
+                        </div>
 
-                          {bed.status === 'occupied' && bed.patientId && (
-                            hasPendingTransfer(bed._id, bed.patientId._id) ? (
-                              <button
-                                className="btn-transfer-pending"
-                                disabled
-                                title="Transfer request pending approval"
-                              >
-                                Transfer Pending ⏳
-                              </button>
-                            ) : (
-                              <button
-                                className="btn-transfer-request"
-                                onClick={() => handleRequestTransfer(bed)}
-                              >
-                                Ward Transfer
-                              </button>
-                            )
-                          )}
-                        </>
-                      ) : (
-                        <>
-                          <div className="available-bed-status">
-                            <span style={{ color: '#10b981', fontWeight: '500' }}>✓ Ready for admission</span>
+                        {bed.patientId && (
+                          <>
+                            <div className="bed-detail-row">
+                              <span className="detail-label">Patient:</span>
+                              <span className="detail-value patient-name">{bed.patientId.name}</span>
+                            </div>
+                            <div className="bed-detail-row">
+                              <span className="detail-label">Admitted:</span>
+                              <span className="detail-value">
+                                {formatDateTime(bed.patientId.admissionDate)}
+                              </span>
+                            </div>
+                            <div className="bed-detail-row" style={{
+                              flexDirection: editingDischargeDate === bed.patientId._id ? 'column' : 'row',
+                              alignItems: editingDischargeDate === bed.patientId._id ? 'stretch' : 'flex-start'
+                            }}>
+                              <span className="detail-label">Expected Discharge:</span>
+                              {editingDischargeDate === bed.patientId._id ? (
+                                <div className="discharge-edit-container" style={{
+                                  backgroundColor: 'var(--surface-panel)',
+                                  padding: '12px',
+                                  borderRadius: '8px',
+                                  border: '1px solid var(--border-emphasis)',
+                                  marginTop: '6px',
+                                  boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
+                                  maxWidth: '100%'
+                                }}>
+                                  <input
+                                    type="datetime-local"
+                                    value={newDischargeDate}
+                                    min={(() => {
+                                      const now = new Date();
+                                      return now.toISOString().slice(0, 16);
+                                    })()}
+                                    onChange={(e) => {
+                                      const selectedDate = new Date(e.target.value);
+                                      const now = new Date();
+
+                                      // If selected date/time is in the past, set to current time
+                                      if (selectedDate < now) {
+                                        setNewDischargeDate(now.toISOString().slice(0, 16));
+                                        showNotification('error', 'Cannot select past date/time. Set to current time.');
+                                      } else {
+                                        setNewDischargeDate(e.target.value);
+                                      }
+                                    }}
+                                    className="discharge-date-input"
+                                    style={{
+                                      width: '100%',
+                                      padding: '8px 10px',
+                                      fontSize: '0.9rem',
+                                      backgroundColor: 'var(--surface-card)',
+                                      color: 'var(--text-primary)',
+                                      border: '1px solid var(--border-soft)',
+                                      borderRadius: '6px',
+                                      boxSizing: 'border-box'
+                                    }}
+                                  />
+                                  <div className="discharge-edit-actions" style={{
+                                    marginTop: '8px'
+                                  }}>
+                                    <button
+                                      className="btn-save-discharge"
+                                      onClick={() => saveDischargeDate(bed.patientId._id)}
+                                    >
+                                      ✓
+                                    </button>
+                                    <button
+                                      className="btn-cancel-discharge"
+                                      onClick={cancelEditDischargeDate}
+                                    >
+                                      ✕
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <span className="detail-value discharge-date-display">
+                                  {formatDateTime(bed.patientId.expectedDischarge) || 'Not set'}
+                                  <button
+                                    className="btn-edit-discharge"
+                                    onClick={() => handleEditDischargeDate(bed.patientId._id, bed.patientId.expectedDischarge)}
+                                    title="Edit discharge date"
+                                  >
+                                    ✏️
+                                  </button>
+                                </span>
+                              )}
+                            </div>
+                          </>
+                        )}
+
+                        {bed.lastCleaned && bed.status === 'available' && (
+                          <div className="bed-detail-row">
+                            <span className="detail-label">Last Cleaned:</span>
+                            <span className="detail-value">
+                              {formatDateTime(bed.lastCleaned)}
+                            </span>
                           </div>
+                        )}
 
-                          {bed.status === 'occupied' && bed.patientId && (
-                            hasPendingTransfer(bed._id, bed.patientId._id) ? (
+                        {bed.notes && (
+                          <div className="bed-notes-compact">
+                            <small>{bed.notes}</small>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="bed-card-actions">
+                        {getBedActions(bed).length > 0 ? (
+                          <>
+                            {getBedActions(bed).map((action, idx) => (
                               <button
-                                className="btn-transfer-pending"
-                                disabled
-                                title="Transfer request pending approval"
+                                key={idx}
+                                className="btn-action"
+                                style={{ backgroundColor: action.color }}
+                                onClick={() => handleBedStatusChange(bed._id, action.status, bed)}
+                                disabled={loading}
                               >
-                                Transfer Pending ⏳
+                                {action.label}
                               </button>
-                            ) : (
-                              <button
-                                className="btn-transfer-request"
-                                onClick={() => handleRequestTransfer(bed)}
-                              >
-                                Request Ward Transfer
-                              </button>
-                            )
-                          )}
-                        </>
-                      )}
+                            ))}
+
+                            {bed.status === 'occupied' && bed.patientId && (
+                              hasPendingTransfer(bed._id, bed.patientId._id) ? (
+                                <button
+                                  className="btn-transfer-pending"
+                                  disabled
+                                  title="Transfer request pending approval"
+                                >
+                                  Transfer Pending ⏳
+                                </button>
+                              ) : (
+                                <button
+                                  className="btn-transfer-request"
+                                  onClick={() => handleRequestTransfer(bed)}
+                                >
+                                  Ward Transfer
+                                </button>
+                              )
+                            )}
+                          </>
+                        ) : (
+                          <>
+                            <div className="available-bed-status">
+                              <span style={{ color: '#10b981', fontWeight: '500' }}>✓ Ready for admission</span>
+                            </div>
+
+                            {bed.status === 'occupied' && bed.patientId && (
+                              hasPendingTransfer(bed._id, bed.patientId._id) ? (
+                                <button
+                                  className="btn-transfer-pending"
+                                  disabled
+                                  title="Transfer request pending approval"
+                                >
+                                  Transfer Pending ⏳
+                                </button>
+                              ) : (
+                                <button
+                                  className="btn-transfer-request"
+                                  onClick={() => handleRequestTransfer(bed)}
+                                >
+                                  Request Ward Transfer
+                                </button>
+                              )
+                            )}
+                          </>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
               </div>
-              )}
+            )}
           </div>
         </ResizableCard>
 
@@ -961,7 +1012,7 @@ function WardStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socke
               <p className="discharge-warning">
                 ⚠️ This will discharge the patient and mark the bed for cleaning. This action cannot be undone.
               </p>
-              
+
               <div className="discharge-details">
                 <h4>Bed Information</h4>
                 <div className="detail-row">
@@ -1043,12 +1094,12 @@ function WardStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socke
 
               <form onSubmit={submitTransferRequest} className="transfer-form">
                 {validationError && (
-                  <div className="validation-error" style={{ 
-                    padding: '12px', 
-                    marginBottom: '16px', 
-                    backgroundColor: '#fee2e2', 
-                    border: '1px solid #ef4444', 
-                    borderRadius: '6px', 
+                  <div className="validation-error" style={{
+                    padding: '12px',
+                    marginBottom: '16px',
+                    backgroundColor: '#fee2e2',
+                    border: '1px solid #ef4444',
+                    borderRadius: '6px',
                     color: '#dc2626',
                     fontSize: '14px'
                   }}>
@@ -1160,9 +1211,21 @@ function WardStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socke
       {/* Transfer Status Modal */}
       {showTransferStatusModal && transferStatusData && (
         <div className="modal-overlay" onClick={() => setShowTransferStatusModal(false)}>
-          <div className="modal-content transfer-status-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '550px' }}>
-            <div className="modal-header">
-              <div className={`status-icon ${transferStatusData.type === 'approved' ? 'approved' : 'denied'}`} style={{
+          <div className="modal-content transfer-status-modal" onClick={(e) => e.stopPropagation()} style={{
+            maxWidth: '550px',
+            backgroundColor: 'var(--card-bg)',
+            border: '1px solid var(--border-soft)',
+            borderRadius: '16px',
+            boxShadow: '0 20px 50px rgba(0, 0, 0, 0.3)'
+          }}>
+            <div className="modal-header" style={{
+              position: 'relative',
+              backgroundColor: transferStatusData.type === 'approved' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+              borderBottom: `2px solid ${transferStatusData.type === 'approved' ? '#10b981' : '#ef4444'}`,
+              padding: '20px',
+              borderRadius: '16px 16px 0 0'
+            }}>
+              {/* <div className={`status-icon ${transferStatusData.type === 'approved' ? 'approved' : 'denied'}`} style={{
                 display: 'inline-block',
                 width: '48px',
                 height: '48px',
@@ -1175,12 +1238,42 @@ function WardStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socke
                 marginBottom: '12px'
               }}>
                 {transferStatusData.type === 'approved' ? '✓' : '✕'}
-              </div>
-              <h2>{transferStatusData.type === 'approved' ? 'Transfer Approved' : 'Transfer Denied'}</h2>
-              <button className="modal-close" onClick={() => setShowTransferStatusModal(false)}>×</button>
+              </div> */}
+              <h2 style={{ color: 'var(--text-primary)' }}>{transferStatusData.type === 'approved' ? 'Transfer Approved' : 'Transfer Denied'}</h2>
+              <button
+                className="modal-close"
+                onClick={() => setShowTransferStatusModal(false)}
+                style={{
+                  position: 'absolute',
+                  top: '16px',
+                  right: '16px',
+                  background: 'rgba(255, 255, 255, 0.15)',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  color: 'var(--text-primary)',
+                  width: '32px',
+                  height: '32px',
+                  borderRadius: '8px',
+                  fontSize: '1.4rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease',
+                  padding: 0,
+                  lineHeight: 1
+                }}
+                onMouseEnter={(e) => {
+                  e.target.style.borderColor = 'var(--text-primary)';
+                  e.target.style.transform = 'rotate(90deg)';
+                }}
+                onMouseLeave={(e) => {
+                  e.target.style.borderColor = 'rgba(255, 255, 255, 0.2)';
+                  e.target.style.transform = 'rotate(0deg)';
+                }}
+              >×</button>
             </div>
 
-            <div className="modal-body">
+            <div className="modal-body" style={{ padding: '24px', backgroundColor: 'var(--card-bg)' }}>
               {transferStatusData.type === 'approved' ? (
                 <>
                   <p style={{ fontSize: '16px', marginBottom: '20px', color: '#10b981', fontWeight: '500' }}>
@@ -1230,15 +1323,6 @@ function WardStaffDashboard({ currentUser, onLogout, theme, onToggleTheme, socke
                   </div>
                 </>
               )}
-            </div>
-
-            <div className="modal-actions">
-              <button
-                className="btn-primary"
-                onClick={() => setShowTransferStatusModal(false)}
-              >
-                Close
-              </button>
             </div>
           </div>
         </div>
