@@ -6,12 +6,12 @@ A comprehensive real-time hospital bed management system designed to streamline 
 ## 📋 Table of Contents
 
 - [Overview](#overview)
+- [Installation](#installation)
 - [Features](#features)
 - [Technology Stack](#technology-stack)
 - [System Architecture](#system-architecture)
 - [User Roles & Permissions](#user-roles--permissions)
 - [Workflows](#workflows)
-- [Installation](#installation)
 - [Usage](#usage)
 - [Default User Credentials](#default-user-credentials)
 - [API Documentation](#api-documentation)
@@ -20,16 +20,61 @@ A comprehensive real-time hospital bed management system designed to streamline 
 
 The Hospital Bed Manager System is a full-stack web application that provides real-time bed tracking, intelligent allocation, and comprehensive analytics for hospital operations. The system supports multiple user roles with specific permissions and workflows to ensure efficient patient care and resource utilization.
 
+
+## 🚀 Installation
+
+### Prerequisites
+- Node.js (v14 or higher)
+- MongoDB (v6.0 or higher)
+- npm or yarn
+
+### Backend Setup
+
+```bash
+# Navigate to backend directory
+cd backend
+
+# Install dependencies
+npm install
+
+
+# Edit .env - (currently alredy provided)
+# MONGODB_URI=your_mongodb_connection_string
+# DB_PASSWORD=your_database_password
+# -GEMini- API KEY=use this "AIzaSyBBa" + "fMvCuHkTfLV5qB8UdV" + "bBkuPvfy9-EM" <-- most important add it and change the .env in the backend
+
+# Start the server
+npm start
+```
+
+The backend server will run on `http://localhost:5000`
+
+### Frontend Setup
+
+```bash
+# Navigate to frontend directory
+cd frontend
+
+# Install dependencies
+npm install
+
+# Start the development server
+npm start
+```
+
+The frontend will run on `http://localhost:3000`
+
 ## ✨ Features
 
 ### Core Functionality
 - **Real-time Bed Tracking**: Live updates on bed status across all wards
-- **Smart Bed Allocation**: Intelligent bed suggestions based on patient requirements and equipment needs
+- **Smart Bed Allocation**: Intelligent suggestions based on patient requirements and equipment needs
 - **Emergency & Scheduled Admissions**: Support for both urgent and planned patient admissions
 - **Ward Transfers**: Seamless patient transfers between units
 - **Occupancy Analytics**: Comprehensive dashboards with historical trends and forecasting
 - **Alert System**: Automated alerts for capacity thresholds and critical situations
 - **AI-Powered Chatbot**: Administrative assistant for data analysis and insights
+- **Intelligent Suggestion**: To handle critical level occupancy smart suggestions to dynamic ward size
 
 ### Advanced Features
 - **60-Day Historical Tracking**: Detailed occupancy history with hourly breakdowns
@@ -226,142 +271,8 @@ The system follows a client-server architecture with real-time bidirectional com
 
 3. **Ward Staff** executes operational changes
 
-4. **Admin** reviews impact via analytics reports
+4. **Admin** - reviews impact via analytics reports
 
-## 🚀 Installation
-
-### Prerequisites
-- Node.js (v14 or higher)
-- MongoDB (v6.0 or higher)
-- npm or yarn
-
-### Backend Setup
-
-```bash
-# Navigate to backend directory
-cd backend
-
-# Install dependencies
-npm install
-
-# Create .env file
-cp .env.example .env
-
-# Edit .env with your MongoDB connection string
-# MONGODB_URI=your_mongodb_connection_string
-# DB_PASSWORD=your_database_password
-# GEMINI_API_KEY=your_google_gemini_api_key
-
-# Start the server
-npm start
-```
-
-The backend server will run on `http://localhost:5000`
-
-### Frontend Setup
-
-```bash
-# Navigate to frontend directory
-cd frontend
-
-# Install dependencies
-npm install
-
-# Start the development server
-npm start
-```
-
-The frontend will run on `http://localhost:3001`
-
-### Quick Start (Both Servers)
-
-```bash
-# From project root
-chmod +x start-all.sh
-./start-all.sh
-```
-
-## 📖 Usage
-
-### First Time Setup
-
-1. **Start Backend**: The system automatically creates default users and initializes system settings
-
-2. **Access Login Page**: Navigate to `http://localhost:3001`
-
-3. **Login with Default Credentials** (see below)
-
-4. **Import Seed Data** (Admin only):
-   - Login as admin
-   - Navigate to Settings tab
-   - Upload `comprehensive_seed_data.json`
-   - Click "Import Seed Data"
-
-### Default User Credentials
-
-| Role | Username | Password | Access Level |
-|------|----------|----------|--------------|
-| Administrator | `admin` | `admin123` | Full system access + analytics |
-| ICU Manager | `anuradha` | `password123` | Bed allocation + transfers |
-| Ward Staff | `wardstaff` | `ward123` | Bed status updates (General Ward) |
-| ER Staff | `erstaff` | `er123` | Bed requests (Emergency) |
-
-**⚠️ Important**: Change these passwords in production!
-
-## 🔌 API Documentation
-
-### Authentication
-```
-POST /api/login
-Body: { username, password }
-Response: { token, user }
-```
-
-### Beds
-```
-GET    /api/beds              - Get all beds
-GET    /api/beds/stats        - Get bed statistics
-POST   /api/beds              - Create new bed (Admin)
-PUT    /api/beds/:id          - Update bed status
-DELETE /api/beds/:id          - Delete bed (Admin)
-```
-
-### Bed Requests
-```
-GET    /api/bed-requests           - Get all requests
-POST   /api/bed-requests           - Create new request
-PUT    /api/bed-requests/:id       - Update request
-POST   /api/bed-requests/:id/approve - Approve request
-POST   /api/bed-requests/:id/deny    - Deny request
-```
-
-### Patients
-```
-GET    /api/patients                    - Get all patients
-POST   /api/patients                    - Admit patient
-PUT    /api/patients/:id                - Update patient
-POST   /api/patients/:id/discharge      - Discharge patient
-GET    /api/patients/discharges/today   - Today's discharges
-```
-
-### Ward Transfers
-```
-GET    /api/ward-transfers     - Get all transfers
-POST   /api/ward-transfers     - Create transfer request
-PUT    /api/ward-transfers/:id - Update transfer status
-```
-
-### System Settings
-```
-GET    /api/settings     - Get system settings
-PUT    /api/settings     - Update settings (Admin)
-```
-
-### Analytics
-```
-GET    /api/beds/history?period=today|week|month - Occupancy history
-POST   /api/chatbot      - Chat with AI assistant (Admin)
-```
 
 ## 📊 Bed State Lifecycle
 
@@ -393,12 +304,12 @@ Default wards and capacities:
 
 | Ward | Capacity | Equipment Types |
 |------|----------|----------------|
-| Emergency | 10 beds | Standard, ICU Monitor |
-| ICU | 20 beds | Ventilator, ICU Monitor, Dialysis |
-| General Ward | 50 beds | Standard, Cardiac Monitor |
-| Cardiology | 20 beds | Cardiac Monitor, Standard |
+| Emergency | 15 beds | Standard, ICU Monitor |
+| ICU | 15 beds | Ventilator, ICU Monitor, Dialysis |
+| General Ward | 15 beds | Standard, Cardiac Monitor |
+| Cardiology | 15 beds | Cardiac Monitor, Standard |
 
-**Total**: 100 beds
+**Total**: 60 beds
 
 ## 📈 Analytics & Forecasting
 
